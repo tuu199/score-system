@@ -3,9 +3,6 @@ _check*.ps1
 _count*.ps1
 _server.ps1
 
-# 运行时生成的共享数据快照
-shared-data.json
-
 # 数据库导出文件
 *.db
 学习积分数据_*.db
