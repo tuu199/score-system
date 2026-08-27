@@ -2,10 +2,14 @@ $root = 'C:\Users\Administrator\AppData\Roaming\TRAE SOLO CN\ModularData\ai-agen
 # 无 BOM 的 UTF-8，避免 JSON.parse 因 BOM 出错
 $utf8 = New-Object System.Text.UTF8Encoding $false
 $listener = New-Object System.Net.HttpListener
-$listener.Prefixes.Add('http://localhost:8000/')
-$listener.Prefixes.Add('http://192.168.1.103:8000/')
-$listener.Start()
-Write-Host "Server running at http://localhost:8000/  (also listening on LAN: http://192.168.1.103:8000/)"
+$listener.Prefixes.Add('http://localhost:8001/')
+try {
+  $listener.Start()
+  Write-Host "Server running at http://localhost:8001/"
+} catch {
+  Write-Host "Failed to start: $($_.Exception.Message)"
+  exit 1
+}
 
 $mimeMap = @{
   '.html' = 'text/html; charset=utf-8'
@@ -27,33 +31,26 @@ while ($listener.IsListening) {
     $ctx  = $listener.GetContext()
     $url  = $ctx.Request.Url.LocalPath
     $method = $ctx.Request.HttpMethod
-
-    # 允许跨域（方便部署到不同域名时上传共享数据）
     $ctx.Response.Headers.Add('Access-Control-Allow-Origin', '*')
     if ($method -eq 'OPTIONS') {
       $ctx.Response.Headers.Add('Access-Control-Allow-Methods', 'GET, POST, OPTIONS')
       $ctx.Response.Headers.Add('Access-Control-Allow-Headers', 'Content-Type')
       $ctx.Response.Close(); continue
     }
-
-    # POST /upload-shared：接收 JSON 并保存为 shared-data.json
     if ($method -eq 'POST' -and $url -eq '/upload-shared') {
       $reader = New-Object System.IO.StreamReader($ctx.Request.InputStream, $utf8)
       $body = $reader.ReadToEnd()
       $reader.Close()
       $savePath = Join-Path $root 'shared-data.json'
       [System.IO.File]::WriteAllText($savePath, $body, $utf8)
-      $resp = '{"ok":true,"msg":"shared-data.json 已更新"}'
+      $resp = '{"ok":true,"msg":"shared-data.json updated"}'
       $bytes = $utf8.GetBytes($resp)
       $ctx.Response.ContentType = 'application/json; charset=utf-8'
-      $ctx.Response.ContentLength64 = $bytes.Length
       $ctx.Response.OutputStream.Write($bytes, 0, $bytes.Length)
       $ctx.Response.Close(); continue
     }
-
     if ($url -eq '/') { $url = '/index.html' }
     $path = Join-Path $root ($url.TrimStart('/'))
-
     if (Test-Path $path -PathType Leaf) {
       $ext  = [System.IO.Path]::GetExtension($path).ToLower()
       $mime = if ($mimeMap.ContainsKey($ext)) { $mimeMap[$ext] } else { 'application/octet-stream' }
@@ -65,15 +62,14 @@ while ($listener.IsListening) {
         $bytes = [System.IO.File]::ReadAllBytes($path)
       }
       $ctx.Response.ContentType        = $mime
-      $ctx.Response.ContentLength64    = $bytes.Length
       $ctx.Response.OutputStream.Write($bytes, 0, $bytes.Length)
     } else {
       $ctx.Response.StatusCode = 404
-      $body = $utf8.GetBytes("404 Not Found: $url")
+      $body = [System.Text.Encoding]::UTF8.GetBytes("404 Not Found: $url")
       $ctx.Response.OutputStream.Write($body, 0, $body.Length)
     }
     $ctx.Response.Close()
   } catch {
-    Write-Host $_.Exception.Message
+    Write-Host ("Request error: " + $_.Exception.Message)
   }
 }
