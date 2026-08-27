@@ -160,9 +160,9 @@
         });
         if (!resp.ok) throw new Error('上传失败：HTTP ' + resp.status);
         const result = await resp.json();
-        // 自动设置共享数据 URL（同源相对路径，部署到任何域名都可用）
-        const sharedUrl = global.location.origin + '/shared-data.json';
-        DB.setSetting('shared_data_url', sharedUrl);
+        // 共享数据 URL 保存为相对路径 /shared-data.json
+        // 这样无论是本地 localhost 还是 GitHub Pages，二维码会自动使用当前域名
+        DB.setSetting('shared_data_url', '/shared-data.json');
         Utils.toast('已上传并更新共享数据，学生扫码即可查看', 'success');
       } catch (e) { Utils.toast('导出失败：' + e.message, 'error'); }
     });
@@ -226,7 +226,14 @@
     let url = baseUrl;
     const sharedDataUrl = DB.getSetting('shared_data_url');
     if (sharedDataUrl) {
-      url = baseUrl + '?data=' + encodeURIComponent(sharedDataUrl);
+      // 相对路径（以 / 开头）→ 拼当前 baseUrl（去掉 pathname 末尾文件名，保留 origin + 部署路径前缀）
+      let dataUrl = sharedDataUrl;
+      if (dataUrl.startsWith('/')) {
+        const origin = baseUrl.split('/').slice(0, 3).join('/'); // http://host
+        const prefix = baseUrl.substring(origin.length).split('?')[0].replace(/\/[^/]*$/, '/'); // /score-system/ 这类前缀
+        dataUrl = origin + prefix + dataUrl.substring(1);
+      }
+      url = baseUrl + '?data=' + encodeURIComponent(dataUrl);
     }
 
     try {
