@@ -137,7 +137,7 @@
               card.appendChild(Utils.el('a', {
                 class: 'share-link', href: s.link, target: '_blank', rel: 'noopener noreferrer',
                 style: { display: 'inline-block', marginTop: '8px', color: 'var(--primary)', wordBreak: 'break-all' },
-              }, ['🔗 ' + s.link]);
+              }, ['🔗 ' + s.link]));
             } else {
               card.appendChild(Utils.el('span', { class: 'share-link', style: { display: 'inline-block', marginTop: '8px', color: 'var(--text-soft)', wordBreak: 'break-all' } }, ['🔗 ' + s.link]));
             }
