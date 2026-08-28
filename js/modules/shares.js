@@ -75,7 +75,8 @@
       view.appendChild(annCard);
     }
 
-    // 发帖表单
+    // 发帖表单（仅管理员可发布）
+    if (ScoreApp.isAdmin) {
     const formCard = Utils.el('div', { class: 'card' }, [
       Utils.el('div', { class: 'card-title' }, ['✏️ 发布分享']),
     ]);
@@ -233,6 +234,14 @@
     });
     formCard.appendChild(submitBtn);
     view.appendChild(formCard);
+    } // end isAdmin
+
+    // 学生模式提示
+    if (!ScoreApp.isAdmin) {
+      view.appendChild(Utils.el('div', { class: 'card', style: { textAlign: 'center', color: 'var(--text-soft)', padding: '20px' } }, [
+        '📢 以下是同学们的分享内容，如需发布分享请联系管理员',
+      ]));
+    }
 
     // 筛选栏
     const filterRow = Utils.el('div', { class: 'filter-row', style: { display: 'flex', gap: '10px', marginBottom: '12px', alignItems: 'center' } });
