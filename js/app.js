@@ -285,7 +285,7 @@
 
     // 探测失败提示
     if (!lanIp && /localhost|127\.0\.0\.1/.test(url)) {
-      Utils.toast('手机无法扫码访问 localhost。请用电脑浏览器访问 http://电脑IP:8000/ 后再生成二维码', 'error');
+      Utils.toast('手机无法扫码访问 localhost。请用电脑浏览器访问 http://电脑IP:8001/ 后再生成二维码', 'error');
     }
   }
   function hideQrcodeModal() {

@@ -478,6 +478,7 @@
     return _mutate(() => {
       // 清空现有数据
       _exec('DELETE FROM score_records');
+      _exec('DELETE FROM shares');
       _exec('DELETE FROM members');
       _exec('DELETE FROM groups');
       _exec('DELETE FROM settings');
@@ -529,43 +530,34 @@
 
       // 1. 合并小组（按名称去重）
       (data.groups || []).forEach(g => {
-        // 查本地是否已有同名小组
         const exist = _queryAll('SELECT id FROM groups WHERE name = ?', [g.name]);
         if (exist.length > 0) {
-          // 已有同名小组，建立ID映射
           groupIdMap[g.id] = exist[0].id;
         } else {
-          // 新小组，用新ID插入
-          const r = _exec('INSERT INTO groups (name, leader_name, created_at) VALUES (?,?,?)',
+          _exec('INSERT INTO groups (name, leader_name, created_at) VALUES (?,?,?)',
             [g.name, g.leader_name, g.created_at]);
-          if (r.lastInsertRowid) {
-            groupIdMap[g.id] = r.lastInsertRowid;
-            added++;
-          }
+          groupIdMap[g.id] = _lastId();
+          added++;
         }
       });
 
       // 2. 合并成员（按 姓名+小组 去重）
       (data.members || []).forEach(m => {
         const localGroupId = groupIdMap[m.group_id] || m.group_id;
-        // 查本地是否已有同名同组成员
         const exist = _queryAll('SELECT id FROM members WHERE name = ? AND group_id = ?', [m.name, localGroupId]);
         if (exist.length > 0) {
           memberIdMap[m.id] = exist[0].id;
         } else {
-          // 新成员，用新ID插入
-          const r = _exec('INSERT INTO members (name, group_id, created_at) VALUES (?,?,?)',
+          _exec('INSERT INTO members (name, group_id, created_at) VALUES (?,?,?)',
             [m.name, localGroupId, m.created_at]);
-          if (r.lastInsertRowid) {
-            memberIdMap[m.id] = r.lastInsertRowid;
-            added++;
-          }
+          memberIdMap[m.id] = _lastId();
+          added++;
         }
       });
 
       // 3. 合并积分记录（按 成员+小组+类别+周次+描述+分数 去重，IS 处理 NULL）
       (data.score_records || []).forEach(r => {
-        const localMemberId = memberIdMap[r.member_id] || r.member_id;
+        const localMemberId = r.member_id ? (memberIdMap[r.member_id] || r.member_id) : null;
         const localGroupId = groupIdMap[r.group_id] || r.group_id;
         // 查本地是否已有相同记录（用 IS 做 NULL 安全比较）
         const exist = _queryAll(
@@ -573,14 +565,13 @@
           [localMemberId, localGroupId, r.category, r.description, r.week, r.individual_points, r.group_points]
         );
         if (exist.length === 0) {
-          // 新记录，用新ID插入
-          const res = _exec(
+          _exec(
             `INSERT INTO score_records (member_id, group_id, category, description, individual_points, group_points, week, created_at, recorded_by)
              VALUES (?,?,?,?,?,?,?,?,?)`,
             [localMemberId, localGroupId, r.category, r.description,
              r.individual_points, r.group_points, r.week, r.created_at, r.recorded_by]
           );
-          if (res.changes > 0) added++;
+          added++;
         }
       });
 
