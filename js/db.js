@@ -61,6 +61,20 @@
       key   TEXT PRIMARY KEY,
       value TEXT NOT NULL
     )`,
+    `CREATE TABLE IF NOT EXISTS shares (
+      id          INTEGER PRIMARY KEY AUTOINCREMENT,
+      member_id   INTEGER,
+      group_id    INTEGER NOT NULL,
+      title       TEXT,
+      content     TEXT NOT NULL,
+      link        TEXT,
+      week        TEXT,
+      created_at  TEXT NOT NULL,
+      FOREIGN KEY (group_id) REFERENCES groups(id) ON DELETE CASCADE,
+      FOREIGN KEY (member_id) REFERENCES members(id) ON DELETE SET NULL
+    )`,
+    `CREATE INDEX IF NOT EXISTS idx_shares_group ON shares(group_id)`,
+    `CREATE INDEX IF NOT EXISTS idx_shares_week ON shares(week)`,
   ];
 
   /** ========== 初始化 ========== */
@@ -263,6 +277,42 @@
     return _queryAll(sql, params);
   }
 
+  /** ========== 分享板 CRUD ========== */
+  function listShares({ groupId = 0, week = '' } = {}) {
+    const params = [];
+    const where = [];
+    if (groupId) { where.push('s.group_id = ?'); params.push(groupId); }
+    if (week) { where.push('s.week = ?'); params.push(week); }
+    const sql = `SELECT s.*, g.name AS group_name, m.name AS member_name
+                 FROM shares s
+                 JOIN groups g ON g.id = s.group_id
+                 LEFT JOIN members m ON m.id = s.member_id
+                 ${where.length ? 'WHERE ' + where.join(' AND ') : ''}
+                 ORDER BY s.created_at DESC, s.id DESC`;
+    return _queryAll(sql, params);
+  }
+  function addShare({ member_id, group_id, title, content, link, week }) {
+    return _mutate(() => {
+      _exec(
+        `INSERT INTO shares (member_id, group_id, title, content, link, week, created_at)
+         VALUES (?,?,?,?,?,?,?)`,
+        [member_id || null, group_id, title || '', content, link || '', week || '',
+         Utils.formatDate()]
+      );
+      // 自动加 1 分（群分享，category=3）
+      _exec(
+        `INSERT INTO score_records (member_id, group_id, category, description, individual_points, group_points, week, created_at, recorded_by)
+         VALUES (?,?,?,?,?,?,?,?,?)`,
+        [member_id || null, group_id, 3, '群分享：' + (title || content.slice(0, 20)),
+         1, 0, week || '', Utils.formatDate(), '分享板自动']
+      );
+      return _lastId();
+    });
+  }
+  function deleteShare(id) {
+    return _mutate(() => { _exec('DELETE FROM shares WHERE id = ?', [id]); return true; });
+  }
+
   /** ========== 统计 ========== */
   function computeStatistics() {
     const overall = _queryOne(
@@ -401,9 +451,10 @@
                                individual_points, group_points, week, created_at, recorded_by
                                FROM score_records ORDER BY id`);
     const settings = _queryAll('SELECT key, value FROM settings');
+    const shares = _queryAll('SELECT id, member_id, group_id, title, content, link, week, created_at FROM shares ORDER BY id');
     return {
       _meta: { app: 'score-system', version: 1, exported_at: Utils.formatDate() },
-      groups, members, score_records: records, settings,
+      groups, members, score_records: records, shares, settings,
     };
   }
 
@@ -437,11 +488,16 @@
       (data.settings || []).forEach(s => {
         _exec('INSERT OR REPLACE INTO settings (key, value) VALUES (?,?)', [s.key, s.value]);
       });
+      (data.shares || []).forEach(s => {
+        _exec('INSERT INTO shares (id, member_id, group_id, title, content, link, week, created_at) VALUES (?,?,?,?,?,?,?,?)',
+          [s.id, s.member_id, s.group_id, s.title, s.content, s.link, s.week, s.created_at]);
+      });
       // 重置自增序列，避免下次插入冲突
       try {
         _exec("UPDATE sqlite_sequence SET seq = (SELECT MAX(id) FROM groups) WHERE name='groups'");
         _exec("UPDATE sqlite_sequence SET seq = (SELECT MAX(id) FROM members) WHERE name='members'");
         _exec("UPDATE sqlite_sequence SET seq = (SELECT MAX(id) FROM score_records) WHERE name='score_records'");
+        _exec("UPDATE sqlite_sequence SET seq = (SELECT MAX(id) FROM shares) WHERE name='shares'");
       } catch (e) { /* sqlite_sequence 可能不存在，忽略 */ }
       return true;
     });
@@ -520,11 +576,29 @@
         _exec('INSERT OR REPLACE INTO settings (key, value) VALUES (?,?)', [s.key, s.value]);
       });
 
+      // 4. 合并分享（按 成员+内容+周次 去重）
+      (data.shares || []).forEach(s => {
+        const localMemberId = s.member_id ? (memberIdMap[s.member_id] || s.member_id) : null;
+        const localGroupId = groupIdMap[s.group_id] || s.group_id;
+        const exist = _queryAll(
+          'SELECT id FROM shares WHERE member_id IS ? AND content = ? AND week = ?',
+          [localMemberId, s.content, s.week]
+        );
+        if (exist.length === 0) {
+          _exec(
+            'INSERT INTO shares (member_id, group_id, title, content, link, week, created_at) VALUES (?,?,?,?,?,?,?)',
+            [localMemberId, localGroupId, s.title, s.content, s.link, s.week, s.created_at]
+          );
+          added++;
+        }
+      });
+
       // 更新自增序列
       try {
         _exec("UPDATE sqlite_sequence SET seq = (SELECT MAX(id) FROM groups) WHERE name='groups'");
         _exec("UPDATE sqlite_sequence SET seq = (SELECT MAX(id) FROM members) WHERE name='members'");
         _exec("UPDATE sqlite_sequence SET seq = (SELECT MAX(id) FROM score_records) WHERE name='score_records'");
+        _exec("UPDATE sqlite_sequence SET seq = (SELECT MAX(id) FROM shares) WHERE name='shares'");
       } catch (e) { /* ignore */ }
       return added;
     });
@@ -593,6 +667,8 @@
     listRecords, addRecord, updateRecord, deleteRecord,
     // search
     searchRecords,
+    // shares
+    listShares, addShare, deleteShare,
     // statistics & ranking
     computeStatistics, getGroupRanking, getIndividualRanking,
     // settings
