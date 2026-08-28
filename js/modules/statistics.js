@@ -96,7 +96,7 @@
           Utils.el('td', {}, ['+' + r.indiv_pts]),
           Utils.el('td', {}, ['+' + r.group_pts]),
           Utils.el('td', {}, [Utils.el('strong', { style: { color: c.color } }, ['+' + r.total_pts])]),
-        ];
+        ]);
       });
     view.appendChild(Utils.el('div', { class: 'card' }, [
       Utils.el('div', { class: 'card-title' }, ['🏷️ 各类别积分统计']),
