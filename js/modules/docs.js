@@ -50,10 +50,55 @@
       ]));
 
       const linkInput = Utils.el('input', {
-        class: 'form-input', type: 'text', placeholder: '文档链接（网盘/文档网址，必填）', id: 'doc-link',
+        class: 'form-input', type: 'text', placeholder: '文档链接（网盘/文档网址，或上传文件后自动填充）', id: 'doc-link',
       });
       formCard.appendChild(Utils.el('div', { class: 'form-row' }, [
         Utils.el('label', {}, ['链接']), linkInput,
+      ]));
+
+      // 文件上传（Word/PDF/Excel/PPT 等）
+      let uploadedFileName = '';
+      const fileInput = Utils.el('input', {
+        type: 'file', id: 'doc-file',
+        accept: '.pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt,.jpg,.jpeg,.png,.gif,.zip,.rar',
+        style: { display: 'none' },
+      });
+      const fileBtn = Utils.el('button', {
+        class: 'btn btn-ghost btn-sm',
+        type: 'button',
+        style: { marginTop: '4px' },
+      }, ['📎 上传文件']);
+      const fileNameLabel = Utils.el('span', { id: 'doc-file-name', style: { fontSize: '13px', color: 'var(--text-soft)', marginLeft: '8px' } }, []);
+      fileBtn.addEventListener('click', () => fileInput.click());
+      fileInput.addEventListener('change', async (e) => {
+        const file = e.target.files[0];
+        if (!file) return;
+        if (file.size > 50 * 1024 * 1024) {
+          Utils.toast('文件不能超过50MB', 'error');
+          fileInput.value = '';
+          return;
+        }
+        fileBtn.textContent = '⏳ 上传中…';
+        fileBtn.disabled = true;
+        try {
+          const result = await DB.uploadFile(file);
+          linkInput.value = result.url;
+          uploadedFileName = result.name;
+          fileNameLabel.textContent = '✅ ' + result.name;
+          if (!titleInput.value.trim()) {
+            const baseName = result.name.replace(/\.[^.]+$/, '');
+            titleInput.value = baseName;
+          }
+          Utils.toast('文件上传成功', 'success');
+        } catch (err) {
+          Utils.toast('上传失败：' + err.message, 'error');
+        }
+        fileBtn.textContent = '📎 上传文件';
+        fileBtn.disabled = false;
+        fileInput.value = '';
+      });
+      formCard.appendChild(Utils.el('div', { class: 'form-row' }, [
+        Utils.el('label', {}, ['文件']), fileBtn, fileInput, fileNameLabel,
       ]));
 
       const pinCheckbox = Utils.el('input', { type: 'checkbox', id: 'doc-pin', style: { marginRight: '6px' } });
@@ -139,13 +184,39 @@
           card.appendChild(Utils.el('div', { style: { color: 'var(--text-soft)', whiteSpace: 'pre-wrap', wordBreak: 'break-word', lineHeight: '1.6', marginBottom: '8px', fontSize: '14px' } }, [d.content]));
         }
 
-        // 链接
+        // 链接 + 文件预览
         if (d.link) {
-          if (/^https?:\/\//i.test(d.link)) {
+          const isUrl = /^https?:\/\//i.test(d.link);
+          const ext = (d.link.match(/\.(pdf|doc|docx|xls|xlsx|ppt|pptx|jpg|jpeg|png|gif|webp)(\?|$)/i) || [])[1] || '';
+
+          if (ext === 'pdf' && isUrl) {
+            // PDF 内嵌预览
+            card.appendChild(Utils.el('div', { style: { marginTop: '10px', borderRadius: '8px', overflow: 'hidden', border: '1px solid var(--border)' } }, [
+              Utils.el('iframe', {
+                src: d.link, style: { width: '100%', height: '400px', border: 'none' },
+              }),
+            ]));
+          } else if (/^(doc|docx|xls|xlsx|ppt|pptx)$/i.test(ext) && isUrl) {
+            // Word/Excel/PPT 用 Office Online 预览
+            card.appendChild(Utils.el('div', { style: { marginTop: '10px', borderRadius: '8px', overflow: 'hidden', border: '1px solid var(--border)' } }, [
+              Utils.el('iframe', {
+                src: 'https://view.officeapps.live.com/op/embed.aspx?src=' + encodeURIComponent(d.link),
+                style: { width: '100%', height: '400px', border: 'none' },
+              }),
+            ]));
+          } else if (/^(jpg|jpeg|png|gif|webp)$/i.test(ext) && isUrl) {
+            // 图片预览
+            card.appendChild(Utils.el('img', {
+              src: d.link, alt: d.title || '文档图片',
+              style: { maxWidth: '100%', borderRadius: '8px', marginTop: '10px', display: 'block' },
+            }));
+          } else if (isUrl) {
+            // 其他文件：下载/打开链接
+            const linkText = ext ? '📎 下载文件（' + ext.toUpperCase() + '）' : '🔗 ' + d.link;
             card.appendChild(Utils.el('a', {
               href: d.link, target: '_blank', rel: 'noopener noreferrer',
               style: { display: 'inline-block', marginTop: '8px', color: 'var(--primary)', wordBreak: 'break-all', fontSize: '14px' },
-            }, ['🔗 ' + d.link]));
+            }, [linkText]));
           } else {
             card.appendChild(Utils.el('span', { style: { display: 'inline-block', marginTop: '8px', color: 'var(--text-soft)', wordBreak: 'break-all', fontSize: '14px' } }, ['🔗 ' + d.link]));
           }

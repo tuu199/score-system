@@ -402,6 +402,16 @@
     return true;
   }
 
+  /** 上传文件到 Supabase Storage，返回公开 URL */
+  async function uploadFile(file) {
+    const ext = (file.name.split('.').pop() || 'bin').toLowerCase();
+    const fileName = `doc_${Date.now()}_${Math.random().toString(36).slice(2, 8)}.${ext}`;
+    const { error } = await supabase.storage.from('docs').upload(fileName, file, { upsert: false });
+    if (error) throw new Error('上传失败: ' + error.message);
+    const { data: urlData } = supabase.storage.from('docs').getPublicUrl(fileName);
+    return { url: urlData.publicUrl, name: file.name, type: file.type, ext };
+  }
+
   /** ========== 统计 ========== */
   function computeStatistics() {
     const records = _cache.score_records;
@@ -592,7 +602,7 @@
     // shares
     listShares, addShare, deleteShare,
     // docs
-    listDocs, addDoc, deleteDoc,
+    listDocs, addDoc, deleteDoc, uploadFile,
     // statistics & ranking
     computeStatistics, getGroupRanking, getIndividualRanking,
     // settings
