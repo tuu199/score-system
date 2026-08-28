@@ -2,26 +2,26 @@
   "_meta": {
     "app": "score-system",
     "version": 1,
-    "exported_at": "2026-08-28 17:42:02"
+    "exported_at": "2026-08-28 17:47:06"
   },
   "groups": [
     {
       "id": 1,
       "name": "胡楚睿组",
       "leader_name": "胡楚睿",
-      "created_at": "2026-08-28 12:03:11"
+      "created_at": "2026-08-28 12:23:40"
     },
     {
       "id": 2,
       "name": "李明轩组",
       "leader_name": "李明轩",
-      "created_at": "2026-08-28 12:03:11"
+      "created_at": "2026-08-28 12:23:40"
     },
     {
       "id": 3,
       "name": "王思涵组",
       "leader_name": "王思涵",
-      "created_at": "2026-08-28 12:03:11"
+      "created_at": "2026-08-28 12:23:40"
     },
     {
       "id": 4,
@@ -155,6 +155,66 @@
     },
     {
       "id": 4,
+      "member_id": null,
+      "group_id": 1,
+      "category": 2,
+      "description": "",
+      "individual_points": 0,
+      "group_points": 3,
+      "week": "2026-W35",
+      "created_at": "2026-08-28 14:37:48",
+      "recorded_by": "管理员"
+    },
+    {
+      "id": 5,
+      "member_id": null,
+      "group_id": 1,
+      "category": 2,
+      "description": "",
+      "individual_points": 0,
+      "group_points": 3,
+      "week": "2026-W35",
+      "created_at": "2026-08-28 14:37:48",
+      "recorded_by": "管理员"
+    },
+    {
+      "id": 6,
+      "member_id": null,
+      "group_id": 1,
+      "category": 2,
+      "description": "",
+      "individual_points": 0,
+      "group_points": 3,
+      "week": "2026-W35",
+      "created_at": "2026-08-28 14:37:48",
+      "recorded_by": "管理员"
+    },
+    {
+      "id": 7,
+      "member_id": null,
+      "group_id": 1,
+      "category": 2,
+      "description": "",
+      "individual_points": 0,
+      "group_points": 3,
+      "week": "2026-W35",
+      "created_at": "2026-08-28 14:37:48",
+      "recorded_by": "管理员"
+    },
+    {
+      "id": 8,
+      "member_id": null,
+      "group_id": 1,
+      "category": 2,
+      "description": "",
+      "individual_points": 0,
+      "group_points": 3,
+      "week": "2026-W35",
+      "created_at": "2026-08-28 14:37:48",
+      "recorded_by": "管理员"
+    },
+    {
+      "id": 9,
       "member_id": 8,
       "group_id": 1,
       "category": 3,
@@ -166,7 +226,7 @@
       "recorded_by": "分享板自动"
     },
     {
-      "id": 5,
+      "id": 10,
       "member_id": 8,
       "group_id": 1,
       "category": 3,
@@ -178,7 +238,7 @@
       "recorded_by": "分享板自动"
     },
     {
-      "id": 6,
+      "id": 11,
       "member_id": 3,
       "group_id": 1,
       "category": 3,
@@ -190,7 +250,7 @@
       "recorded_by": "分享板自动"
     },
     {
-      "id": 7,
+      "id": 12,
       "member_id": 5,
       "group_id": 4,
       "category": 5,
@@ -202,7 +262,7 @@
       "recorded_by": "管理员"
     },
     {
-      "id": 8,
+      "id": 13,
       "member_id": 5,
       "group_id": 4,
       "category": 1,
@@ -211,6 +271,18 @@
       "group_points": 0,
       "week": "2026-W35",
       "created_at": "2026-08-28 17:41:58",
+      "recorded_by": "管理员"
+    },
+    {
+      "id": 14,
+      "member_id": 6,
+      "group_id": 1,
+      "category": 5,
+      "description": "",
+      "individual_points": 20,
+      "group_points": 10,
+      "week": "2026-W35",
+      "created_at": "2026-08-28 17:46:56",
       "recorded_by": "管理员"
     }
   ],
