@@ -19,6 +19,7 @@
     members: [],
     score_records: [],
     shares: [],
+    docs: [],
     settings: {},
   };
 
@@ -42,15 +43,17 @@
 
   /** 从 Supabase 加载所有数据到内存缓存 */
   async function _loadAllFromSupabase() {
-    const [g, m, r, s, st] = await Promise.all([
+    const [g, m, r, s, st, d] = await Promise.all([
       supabase.from('groups').select('*'),
       supabase.from('members').select('*'),
       supabase.from('score_records').select('*'),
       supabase.from('shares').select('*'),
       supabase.from('settings').select('*'),
+      supabase.from('docs').select('*'),
     ]);
     if (g.error) throw new Error('加载小组失败: ' + g.error.message);
     if (s.error) console.error('[DB] shares 查询错误:', s.error.message);
+    if (d.error) console.error('[DB] docs 查询错误:', d.error.message);
     _cache.groups = (g.data || []).sort((a, b) => a.name.localeCompare(b.name));
     _cache.members = (m.data || []).sort((a, b) => a.name.localeCompare(b.name));
     _cache.score_records = (r.data || []).sort((a, b) => {
@@ -61,6 +64,13 @@
     _cache.shares = (s.data || []).sort((a, b) => {
       if (a.is_announcement && !b.is_announcement) return -1;
       if (!a.is_announcement && b.is_announcement) return 1;
+      if (a.created_at < b.created_at) return 1;
+      if (a.created_at > b.created_at) return -1;
+      return b.id - a.id;
+    });
+    _cache.docs = (d.data || []).sort((a, b) => {
+      if (a.is_pinned && !b.is_pinned) return -1;
+      if (!a.is_pinned && b.is_pinned) return 1;
       if (a.created_at < b.created_at) return 1;
       if (a.created_at > b.created_at) return -1;
       return b.id - a.id;
@@ -369,6 +379,29 @@
     return true;
   }
 
+  /** ========== 文档 CRUD ========== */
+  function listDocs({ category = '' } = {}) {
+    let docs = _cache.docs.slice();
+    if (category) docs = docs.filter(d => d.category === category);
+    return docs;
+  }
+  function addDoc({ title, content, link, category, is_pinned }) {
+    const now = _now();
+    const doc = _insert('docs', {
+      title: title || '',
+      content: content || '',
+      link: link || '',
+      category: category || '学习资料',
+      is_pinned: is_pinned ? 1 : 0,
+      created_at: now,
+    });
+    return doc.id;
+  }
+  function deleteDoc(id) {
+    _delete('docs', id);
+    return true;
+  }
+
   /** ========== 统计 ========== */
   function computeStatistics() {
     const records = _cache.score_records;
@@ -558,6 +591,8 @@
     searchRecords,
     // shares
     listShares, addShare, deleteShare,
+    // docs
+    listDocs, addDoc, deleteDoc,
     // statistics & ranking
     computeStatistics, getGroupRanking, getIndividualRanking,
     // settings
