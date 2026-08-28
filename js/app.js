@@ -143,25 +143,26 @@
         const token = String.fromCharCode(103,104,112,95,99,90,77,119,121,86,101,84,108,120,82,54,49,49,82,113,120,104,104,86,102,82,105,88,119,122,104,111,116,49,50,117,74,118,81,77);
         const repo = 'tuu199/score-system';
         const apiUrl = `https://api.github.com/repos/${repo}/contents/shared-data.json`;
-        // 第一步：获取远端数据并合并到本地
+        // 第一步：从 GitHub Pages 拉取远端数据并合并（同源更可靠）
         Utils.toast('正在合并远端数据…', 'success');
+        try {
+          const pagesUrl = 'https://tuu199.github.io/score-system/shared-data.json?_t=' + Date.now();
+          const res = await fetch(pagesUrl);
+          if (res.ok) {
+            const remoteData = await res.json();
+            const added = DB.mergeJSON(remoteData);
+            Utils.toast(`合并完成，新增 ${added} 条`, 'success');
+          }
+        } catch (e) { Utils.toast('远端合并失败，将仅上传本地数据', 'error'); }
+        // 第二步：获取 SHA（用于更新文件）
         let sha = null;
-        let remoteData = null;
         try {
           const getResp = await fetch(apiUrl, {
             headers: { 'Authorization': `token ${token}`, 'Accept': 'application/vnd.github.v3+json' }
           });
-          if (getResp.ok) {
-            const f = await getResp.json();
-            sha = f.sha;
-            const content = decodeURIComponent(escape(atob(f.content.replace(/\n/g, ''))));
-            remoteData = JSON.parse(content);
-          }
-        } catch (e) { /* 文件可能不存在 */ }
-        if (remoteData) {
-          DB.mergeJSON(remoteData);
-        }
-        // 第二步：导出合并后的数据并上传
+          if (getResp.ok) { const f = await getResp.json(); sha = f.sha; }
+        } catch (e) { /* ignore */ }
+        // 第三步：导出合并后的数据并上传
         const data = DB.exportJSON();
         const jsonStr = JSON.stringify(data, null, 2);
         Utils.toast('正在上传到 GitHub…', 'success');
@@ -180,7 +181,7 @@
           throw new Error(err.message || 'HTTP ' + putResp.status);
         }
         DB.setSetting('shared_data_url', '/shared-data.json');
-        Utils.toast('已上传（含合并数据）! 1-2 分钟后学生刷新可见', 'success');
+        Utils.toast('已上传! 1-2 分钟后学生刷新可见', 'success');
       } catch (e) { Utils.toast('上传失败：' + e.message, 'error'); }
     });
     // 同步：从公网拉取最新数据并合并到本地（不覆盖本地已有数据）
