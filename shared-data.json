@@ -2,26 +2,26 @@
   "_meta": {
     "app": "score-system",
     "version": 1,
-    "exported_at": "2026-08-28 14:39:59"
+    "exported_at": "2026-08-28 14:44:34"
   },
   "groups": [
     {
       "id": 1,
       "name": "胡楚睿组",
       "leader_name": "胡楚睿",
-      "created_at": "2026-08-28 12:23:40"
+      "created_at": "2026-08-28 12:03:13"
     },
     {
       "id": 2,
       "name": "李明轩组",
       "leader_name": "李明轩",
-      "created_at": "2026-08-28 12:23:40"
+      "created_at": "2026-08-28 12:03:13"
     },
     {
       "id": 3,
       "name": "王思涵组",
       "leader_name": "王思涵",
-      "created_at": "2026-08-28 12:23:40"
+      "created_at": "2026-08-28 12:03:13"
     },
     {
       "id": 4,
@@ -33,15 +33,15 @@
   "members": [
     {
       "id": 1,
-      "name": "李子铭",
-      "group_id": 1,
-      "created_at": "2026-08-28 12:32:11"
+      "name": "涂佳豪",
+      "group_id": 4,
+      "created_at": "2026-08-28 12:48:35"
     },
     {
       "id": 2,
-      "name": "高浩怡",
-      "group_id": 1,
-      "created_at": "2026-08-28 12:33:22"
+      "name": "刘志强",
+      "group_id": 4,
+      "created_at": "2026-08-28 12:48:44"
     },
     {
       "id": 3,
@@ -51,15 +51,15 @@
     },
     {
       "id": 4,
-      "name": "涂佳豪",
-      "group_id": 4,
-      "created_at": "2026-08-28 12:48:35"
+      "name": "李子铭",
+      "group_id": 1,
+      "created_at": "2026-08-28 12:32:11"
     },
     {
       "id": 5,
-      "name": "刘志强",
-      "group_id": 4,
-      "created_at": "2026-08-28 12:48:44"
+      "name": "高浩怡",
+      "group_id": 1,
+      "created_at": "2026-08-28 12:33:22"
     },
     {
       "id": 6,
@@ -89,6 +89,18 @@
   "score_records": [
     {
       "id": 1,
+      "member_id": null,
+      "group_id": 4,
+      "category": 1,
+      "description": "",
+      "individual_points": 26,
+      "group_points": 19,
+      "week": "2026-W35",
+      "created_at": "2026-08-28 14:37:45",
+      "recorded_by": "管理员"
+    },
+    {
+      "id": 2,
       "member_id": 6,
       "group_id": 1,
       "category": 3,
@@ -100,7 +112,7 @@
       "recorded_by": "管理员"
     },
     {
-      "id": 2,
+      "id": 3,
       "member_id": 8,
       "group_id": 1,
       "category": 3,
@@ -112,7 +124,7 @@
       "recorded_by": "管理员"
     },
     {
-      "id": 3,
+      "id": 4,
       "member_id": null,
       "group_id": 1,
       "category": 2,
@@ -124,7 +136,43 @@
       "recorded_by": "管理员"
     },
     {
-      "id": 4,
+      "id": 5,
+      "member_id": null,
+      "group_id": 4,
+      "category": 1,
+      "description": "",
+      "individual_points": 13,
+      "group_points": 63,
+      "week": "2026-W34",
+      "created_at": "2026-08-28 14:44:05",
+      "recorded_by": "管理员"
+    },
+    {
+      "id": 6,
+      "member_id": null,
+      "group_id": 4,
+      "category": 1,
+      "description": "",
+      "individual_points": 13,
+      "group_points": 63,
+      "week": "2026-W35",
+      "created_at": "2026-08-28 14:44:29",
+      "recorded_by": "管理员"
+    },
+    {
+      "id": 7,
+      "member_id": null,
+      "group_id": 1,
+      "category": 2,
+      "description": "",
+      "individual_points": 0,
+      "group_points": 3,
+      "week": "2026-W35",
+      "created_at": "2026-08-28 14:37:48",
+      "recorded_by": "管理员"
+    },
+    {
+      "id": 8,
       "member_id": null,
       "group_id": 1,
       "category": 2,
