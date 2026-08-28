@@ -194,7 +194,7 @@
     const rows = records.length === 0
       ? [Utils.el('tr', {}, [Utils.el('td', { class: 'empty', colspan: 7 }, ['本周暂无记录'])])]
       : records.map(r => Utils.el('tr', {}, [
-          Utils.el('td', {}, [Utils.el('span', { class: 'cat-badge cat-' + r.category }, [cat[r.category].short])]),
+          Utils.el('td', {}, [Utils.el('span', { class: 'cat-badge cat-' + r.category }, [(cat[r.category] || { short: '其他' }).short])]),
           Utils.el('td', {}, [r.member_name ? '👤 ' + r.member_name : '👥 全组']),
           Utils.el('td', {}, [r.description || '-']),
           Utils.el('td', {}, [r.individual_points ? '+' + r.individual_points : '-']),

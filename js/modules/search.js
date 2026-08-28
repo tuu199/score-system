@@ -104,7 +104,7 @@
       const rows = records.length === 0
         ? [Utils.el('tr', {}, [Utils.el('td', { class: 'empty', colspan: 8 }, ['没有匹配的记录'])])]
         : records.map(r => Utils.el('tr', {}, [
-            Utils.el('td', {}, [Utils.el('span', { class: 'cat-badge cat-' + r.category }, [cat[r.category].short])]),
+            Utils.el('td', {}, [Utils.el('span', { class: 'cat-badge cat-' + r.category }, [(cat[r.category] || { short: '其他' }).short])]),
             Utils.el('td', {}, [r.week || '-']),
             Utils.el('td', {}, [Utils.el('strong', {}, [r.group_name])]),
             Utils.el('td', {}, [r.member_name ? '👤 ' + r.member_name : '👥 全组']),

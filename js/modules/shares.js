@@ -327,7 +327,7 @@
             style: { float: 'right', padding: '2px 8px', fontSize: '12px' },
           }, ['删除']);
           delBtn.addEventListener('click', () => {
-            if (!confirm('确认删除这条分享？')) return;
+            if (!Utils.confirm('确认删除这条分享？')) return;
             DB.deleteShare(s.id);
             Utils.toast('已删除', 'info');
             renderList();

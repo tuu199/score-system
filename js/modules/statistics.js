@@ -35,6 +35,7 @@
 
     const s = DB.computeStatistics();
     const cat = DB.CATEGORIES;
+    const safeCat = (k) => cat[k] || { icon: '📝', short: '其他', name: '未知', color: '#6b7280' };
 
     // 顶部总览卡片
     view.appendChild(Utils.el('div', { class: 'stats-grid' }, [
@@ -87,13 +88,16 @@
     // 类别统计表
     const catRows = s.by_category.length === 0
       ? [Utils.el('tr', {}, [Utils.el('td', { class: 'empty', colspan: 5 }, ['暂无类别数据'])])]
-      : s.by_category.map(r => Utils.el('tr', {}, [
-          Utils.el('td', {}, [cat[r.category].icon + ' ' + cat[r.category].name]),
+      : s.by_category.map(r => {
+          const c = safeCat(r.category);
+          return Utils.el('tr', {}, [
+          Utils.el('td', {}, [c.icon + ' ' + c.name]),
           Utils.el('td', {}, [r.record_count + ' 次']),
           Utils.el('td', {}, ['+' + r.indiv_pts]),
           Utils.el('td', {}, ['+' + r.group_pts]),
-          Utils.el('td', {}, [Utils.el('strong', { style: { color: cat[r.category].color } }, ['+' + r.total_pts])]),
-        ]));
+          Utils.el('td', {}, [Utils.el('strong', { style: { color: c.color } }, ['+' + r.total_pts])]),
+        ];
+      });
     view.appendChild(Utils.el('div', { class: 'card' }, [
       Utils.el('div', { class: 'card-title' }, ['🏷️ 各类别积分统计']),
       Utils.el('div', { class: 'table-wrap' }, [
@@ -153,10 +157,10 @@
       const c2 = new Chart(document.getElementById('chart-cat-doughnut').getContext('2d'), {
         type: 'doughnut',
         data: {
-          labels: s.by_category.map(r => cat[r.category].icon + ' ' + cat[r.category].short),
+          labels: s.by_category.map(r => safeCat(r.category).icon + ' ' + safeCat(r.category).short),
           datasets: [{
             data: s.by_category.map(r => r.total_pts),
-            backgroundColor: s.by_category.map(r => cat[r.category].color),
+            backgroundColor: s.by_category.map(r => safeCat(r.category).color),
             borderWidth: 2, borderColor: '#fff',
           }],
         },
