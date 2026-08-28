@@ -449,7 +449,9 @@
 
   /** 从 URL 加载 JSON 数据（学生端用），返回 Promise */
   async function loadFromURL(url) {
-    const res = await fetch(url);
+    // 添加时间戳防止浏览器缓存旧数据
+    const bustUrl = url + (url.includes('?') ? '&' : '?') + '_t=' + Date.now();
+    const res = await fetch(bustUrl);
     if (!res.ok) throw new Error(`加载数据失败：HTTP ${res.status}`);
     const data = await res.json();
     importJSON(data);

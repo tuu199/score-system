@@ -3,9 +3,10 @@ $root = 'C:\Users\Administrator\AppData\Roaming\TRAE SOLO CN\ModularData\ai-agen
 $utf8 = New-Object System.Text.UTF8Encoding $false
 $listener = New-Object System.Net.HttpListener
 $listener.Prefixes.Add('http://localhost:8001/')
+$listener.Prefixes.Add('http://192.168.2.196:8001/')
 try {
   $listener.Start()
-  Write-Host "Server running at http://localhost:8001/"
+  Write-Host "Server running at http://localhost:8001/  (also listening on LAN: http://192.168.2.196:8001/)"
 } catch {
   Write-Host "Failed to start: $($_.Exception.Message)"
   exit 1
@@ -43,7 +44,17 @@ while ($listener.IsListening) {
       $reader.Close()
       $savePath = Join-Path $root 'shared-data.json'
       [System.IO.File]::WriteAllText($savePath, $body, $utf8)
-      $resp = '{"ok":true,"msg":"shared-data.json updated"}'
+      # 自动 git add + commit + push，让公网 GitHub Pages 同步更新
+      $gitExe = 'C:\Users\Administrator\AppData\Local\GitHubDesktop\app-3.6.4\resources\app\git\mingw64\bin\git.exe'
+      $repoDir = $root
+      try {
+        & $gitExe -C $repoDir add shared-data.json 2>$null
+        & $gitExe -C $repoDir commit -m "update shared-data.json (auto)" 2>$null
+        & $gitExe -C $repoDir push origin main 2>$null
+        $resp = '{"ok":true,"msg":"uploaded and pushed to github"}'
+      } catch {
+        $resp = '{"ok":true,"msg":"uploaded locally, git push skipped"}'
+      }
       $bytes = $utf8.GetBytes($resp)
       $ctx.Response.ContentType = 'application/json; charset=utf-8'
       $ctx.Response.OutputStream.Write($bytes, 0, $bytes.Length)
