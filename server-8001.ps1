@@ -60,6 +60,28 @@ while ($listener.IsListening) {
       $ctx.Response.OutputStream.Write($bytes, 0, $bytes.Length)
       $ctx.Response.Close(); continue
     }
+    # 同步：从 GitHub Pages 拉取最新 shared-data.json，保存到本地并返回
+    if ($method -eq 'GET' -and $url -eq '/sync-latest') {
+      try {
+        $syncUrl = 'https://tuu199.github.io/score-system/shared-data.json'
+        $webResp = Invoke-WebRequest -Uri $syncUrl -UseBasicParsing -TimeoutSec 15
+        $content = $webResp.Content
+        # 保存到本地
+        $savePath = Join-Path $root 'shared-data.json'
+        [System.IO.File]::WriteAllText($savePath, $content, $utf8)
+        # 返回原始 JSON
+        $bytes = $utf8.GetBytes($content)
+        $ctx.Response.ContentType = 'application/json; charset=utf-8'
+        $ctx.Response.OutputStream.Write($bytes, 0, $bytes.Length)
+      } catch {
+        $err = '{"_error":"拉取公网数据失败：' + $_.Exception.Message.Replace('"','') + '"}'
+        $bytes = $utf8.GetBytes($err)
+        $ctx.Response.StatusCode = 502
+        $ctx.Response.ContentType = 'application/json; charset=utf-8'
+        $ctx.Response.OutputStream.Write($bytes, 0, $bytes.Length)
+      }
+      $ctx.Response.Close(); continue
+    }
     if ($url -eq '/') { $url = '/index.html' }
     $path = Join-Path $root ($url.TrimStart('/'))
     if (Test-Path $path -PathType Leaf) {

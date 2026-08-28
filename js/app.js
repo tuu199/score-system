@@ -166,6 +166,21 @@
         Utils.toast('已上传并更新共享数据，学生扫码即可查看', 'success');
       } catch (e) { Utils.toast('导出失败：' + e.message, 'error'); }
     });
+    // 同步：从公网拉取最新共享数据，覆盖本地（多管理员协作时先同步再编辑）
+    document.getElementById('btn-sync')?.addEventListener('click', async () => {
+      if (!isAdmin) { Utils.toast('需要管理员权限', 'error'); return; }
+      if (!Utils.confirm('将从公网拉取最新共享数据并覆盖本地数据，确定继续？')) return;
+      try {
+        Utils.toast('正在同步最新数据…', 'success');
+        const res = await fetch('/sync-latest');
+        if (!res.ok) throw new Error('同步失败：HTTP ' + res.status);
+        const data = await res.json();
+        if (data._error) throw new Error(data._error);
+        DB.importJSON(data);
+        Utils.toast('同步成功，正在刷新…', 'success');
+        setTimeout(() => global.location.reload(), 600);
+      } catch (e) { Utils.toast('同步失败：' + e.message, 'error'); }
+    });
     const fileInput = document.getElementById('file-import');
     document.getElementById('btn-import')?.addEventListener('click', () => {
       if (!isAdmin) { Utils.toast('需要管理员权限', 'error'); return; }
