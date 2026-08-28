@@ -358,8 +358,8 @@
       created_at: now,
       is_announcement: is_announcement ? 1 : 0,
     });
-    // 普通分享自动加1分（公告不加积分）
-    if (!is_announcement) {
+    // 普通分享且有成员关联时自动加1分（公告和匿名不加积分）
+    if (!is_announcement && member_id) {
       _insert('score_records', {
         member_id: member_id || null,
         group_id,

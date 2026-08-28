@@ -199,6 +199,11 @@
       imageBtn, imageInput, imagePreview,
     ]));
 
+    // 匿名发布选项
+    const anonCheckbox = Utils.el('input', { type: 'checkbox', id: 'share-anon', style: { marginRight: '6px' } });
+    const anonLabel = Utils.el('label', { style: { display: 'flex', alignItems: 'center', cursor: 'pointer' } }, [anonCheckbox, Utils.el('span', {}, ['🕶️ 匿名发布（不显示姓名，不加分）')]);
+    formCard.appendChild(Utils.el('div', { class: 'form-row' }, [anonLabel]));
+
     // 提交按钮
     const submitBtn = Utils.el('button', {
       class: 'btn btn-primary',
@@ -210,14 +215,16 @@
       const title = titleInput.value.trim();
       const content = contentTextarea.value.trim();
       const link = linkInput.value.trim();
+      const isAnon = anonCheckbox.checked;
       if (!gid) { Utils.toast('请选择小组', 'error'); return; }
+      if (!isAnon && !mid) { Utils.toast('请选择成员或勾选匿名', 'error'); return; }
       if (!content && !imageBase64) { Utils.toast('请填写分享内容或添加图片', 'error'); return; }
       try {
         DB.addShare({
-          member_id: mid, group_id: gid, title, content, link,
+          member_id: isAnon ? null : mid, group_id: gid, title, content, link,
           image_data: imageBase64, week: currentWeek,
         });
-        Utils.toast('分享成功！个人积分 +1', 'success');
+        Utils.toast(isAnon ? '匿名分享成功！' : '分享成功！个人积分 +1', 'success');
         // 清空表单
         titleInput.value = '';
         contentTextarea.value = '';
@@ -225,6 +232,7 @@
         imageBase64 = '';
         imagePreview.innerHTML = '';
         imageInput.value = '';
+        anonCheckbox.checked = false;
         // 刷新列表
         ScoreApp.navigate('shares');
       } catch (e) {
@@ -269,7 +277,7 @@
         });
         // 头部：姓名 + 小组 + 时间
         card.appendChild(Utils.el('div', { class: 'share-header' }, [
-          Utils.el('span', { class: 'share-author' }, [isAnn ? '📢 管理员公告' : (s.member_name || '未知')]),
+          Utils.el('span', { class: 'share-author' }, [isAnn ? '📢 管理员公告' : (s.member_name || '🕶️ 匿名同学')]),
           Utils.el('span', { class: 'share-group' }, [isAnn ? '通知' : s.group_name]),
           Utils.el('span', { class: 'share-time' }, [s.created_at]),
         ]));

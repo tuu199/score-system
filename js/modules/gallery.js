@@ -90,7 +90,7 @@
         // 头部：姓名 + 小组 + 时间
         card.appendChild(Utils.el('div', { class: 'share-header', style: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px', fontSize: '13px' } }, [
           Utils.el('span', { class: 'share-author', style: { fontWeight: '600', color: isAnn ? '#d97706' : 'var(--text)' } }, [
-            isAnn ? '📢 管理员公告' : '👤 ' + (s.member_name || '未知'),
+            isAnn ? '📢 管理员公告' : '👤 ' + (s.member_name || '🕶️ 匿名同学'),
           ]),
           Utils.el('span', { class: 'share-group', style: { color: 'var(--text-soft)' } }, [
             isAnn ? '通知' : s.group_name,
