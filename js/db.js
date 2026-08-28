@@ -91,6 +91,13 @@
     global.localStorage.removeItem(OLD_KEY);
     db = _loadFromStorage() || new SQL.Database();
     _exec(SCHEMA);
+    // 迁移：给已有的 shares 表补 image_data 列
+    try {
+      const cols = _queryAll('PRAGMA table_info(shares)');
+      if (cols.length > 0 && !cols.some(c => c.name === 'image_data')) {
+        _exec('ALTER TABLE shares ADD COLUMN image_data TEXT');
+      }
+    } catch (e) { /* shares 表可能不存在，忽略 */ }
     db.run('PRAGMA foreign_keys = ON');
     _saveToStorage();
     return db;
