@@ -187,36 +187,53 @@
         // 链接 + 文件预览
         if (d.link) {
           const isUrl = /^https?:\/\//i.test(d.link);
-          const ext = (d.link.match(/\.(pdf|doc|docx|xls|xlsx|ppt|pptx|jpg|jpeg|png|gif|webp)(\?|$)/i) || [])[1] || '';
+          const ext = (d.link.match(/\.(pdf|doc|docx|xls|xlsx|ppt|pptx|txt|jpg|jpeg|png|gif|webp|zip|rar)(\?|$)/i) || [])[1] || '';
 
-          if (ext === 'pdf' && isUrl) {
-            // PDF 内嵌预览
-            card.appendChild(Utils.el('div', { style: { marginTop: '10px', borderRadius: '8px', overflow: 'hidden', border: '1px solid var(--border)' } }, [
-              Utils.el('iframe', {
-                src: d.link, style: { width: '100%', height: '400px', border: 'none' },
-              }),
-            ]));
-          } else if (/^(doc|docx|xls|xlsx|ppt|pptx)$/i.test(ext) && isUrl) {
-            // Word/Excel/PPT 用 Office Online 预览
-            card.appendChild(Utils.el('div', { style: { marginTop: '10px', borderRadius: '8px', overflow: 'hidden', border: '1px solid var(--border)' } }, [
-              Utils.el('iframe', {
-                src: 'https://view.officeapps.live.com/op/embed.aspx?src=' + encodeURIComponent(d.link),
-                style: { width: '100%', height: '400px', border: 'none' },
-              }),
-            ]));
-          } else if (/^(jpg|jpeg|png|gif|webp)$/i.test(ext) && isUrl) {
-            // 图片预览
-            card.appendChild(Utils.el('img', {
-              src: d.link, alt: d.title || '文档图片',
-              style: { maxWidth: '100%', borderRadius: '8px', marginTop: '10px', display: 'block' },
-            }));
-          } else if (isUrl) {
-            // 其他文件：下载/打开链接
-            const linkText = ext ? '📎 下载文件（' + ext.toUpperCase() + '）' : '🔗 ' + d.link;
-            card.appendChild(Utils.el('a', {
-              href: d.link, target: '_blank', rel: 'noopener noreferrer',
-              style: { display: 'inline-block', marginTop: '8px', color: 'var(--primary)', wordBreak: 'break-all', fontSize: '14px' },
-            }, [linkText]));
+          if (isUrl) {
+            // 文件预览区
+            if (ext === 'pdf') {
+              // PDF 内嵌预览
+              card.appendChild(Utils.el('div', { style: { marginTop: '10px', borderRadius: '8px', overflow: 'hidden', border: '1px solid var(--border)' } }, [
+                Utils.el('iframe', {
+                  src: d.link, style: { width: '100%', height: '400px', border: 'none' },
+                }),
+              ]));
+            } else if (/^(doc|docx|xls|xlsx|ppt|pptx)$/i.test(ext)) {
+              // Word/Excel/PPT 用 Office Online 预览
+              card.appendChild(Utils.el('div', { style: { marginTop: '10px', borderRadius: '8px', overflow: 'hidden', border: '1px solid var(--border)' } }, [
+                Utils.el('iframe', {
+                  src: 'https://view.officeapps.live.com/op/embed.aspx?src=' + encodeURIComponent(d.link),
+                  style: { width: '100%', height: '400px', border: 'none' },
+                }),
+              ]));
+            } else if (/^(jpg|jpeg|png|gif|webp)$/i.test(ext)) {
+              // 图片预览
+              card.appendChild(Utils.el('img', {
+                src: d.link, alt: d.title || '文档图片',
+                style: { maxWidth: '100%', borderRadius: '8px', marginTop: '10px', display: 'block' },
+              }));
+            }
+
+            // 下载按钮（所有文件类型）
+            const btnRow = Utils.el('div', { style: { marginTop: '10px', display: 'flex', gap: '8px', flexWrap: 'wrap' } });
+            btnRow.appendChild(Utils.el('a', {
+              href: d.link, target: '_blank', rel: 'noopener noreferrer', download: '',
+              class: 'btn btn-primary btn-sm',
+              style: { textDecoration: 'none', display: 'inline-flex', alignItems: 'center', gap: '4px' },
+            }, ['📥 下载文件' + (ext ? '（' + ext.toUpperCase() + '）' : '')]));
+
+            // 打印按钮（PDF在新标签打开后可直接 Ctrl+P 打印）
+            if (ext === 'pdf') {
+              btnRow.appendChild(Utils.el('button', {
+                class: 'btn btn-ghost btn-sm',
+                onclick: () => window.open(d.link, '_blank'),
+              }, ['🖨️ 打印']));
+            }
+            // Word/Excel 提示下载后打印
+            if (/^(doc|docx|xls|xlsx|ppt|pptx)$/i.test(ext)) {
+              btnRow.appendChild(Utils.el('span', { style: { fontSize: '12px', color: 'var(--text-soft)', alignSelf: 'center' } }, ['（下载后可打印）']));
+            }
+            card.appendChild(btnRow);
           } else {
             card.appendChild(Utils.el('span', { style: { display: 'inline-block', marginTop: '8px', color: 'var(--text-soft)', wordBreak: 'break-all', fontSize: '14px' } }, ['🔗 ' + d.link]));
           }
