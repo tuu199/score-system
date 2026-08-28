@@ -447,34 +447,79 @@
     });
   }
 
-  /** 合并远端 JSON 到本地（不覆盖本地已有数据，按 ID 去重） */
+  /** 合并远端 JSON 到本地（按自然键去重，避免自增ID冲突导致丢数据） */
   function mergeJSON(data) {
     if (!data || !Array.isArray(data.groups) || !Array.isArray(data.score_records)) {
       throw new Error('JSON 数据格式无效');
     }
     return _mutate(() => {
       let added = 0;
+      // 小组ID映射表：远端group_id → 本地group_id
+      const groupIdMap = {};
+      // 成员ID映射表：远端member_id → 本地member_id
+      const memberIdMap = {};
+
+      // 1. 合并小组（按名称去重）
       (data.groups || []).forEach(g => {
-        const r = _exec('INSERT OR IGNORE INTO groups (id, name, leader_name, created_at) VALUES (?,?,?,?)',
-          [g.id, g.name, g.leader_name, g.created_at]);
-        if (r.changes > 0) added++;
+        // 查本地是否已有同名小组
+        const exist = _queryAll('SELECT id FROM groups WHERE name = ?', [g.name]);
+        if (exist.length > 0) {
+          // 已有同名小组，建立ID映射
+          groupIdMap[g.id] = exist[0].id;
+        } else {
+          // 新小组，用新ID插入
+          const r = _exec('INSERT INTO groups (name, leader_name, created_at) VALUES (?,?,?)',
+            [g.name, g.leader_name, g.created_at]);
+          if (r.lastInsertRowid) {
+            groupIdMap[g.id] = r.lastInsertRowid;
+            added++;
+          }
+        }
       });
+
+      // 2. 合并成员（按 姓名+小组 去重）
       (data.members || []).forEach(m => {
-        const r = _exec('INSERT OR IGNORE INTO members (id, name, group_id, created_at) VALUES (?,?,?,?)',
-          [m.id, m.name, m.group_id, m.created_at]);
-        if (r.changes > 0) added++;
+        const localGroupId = groupIdMap[m.group_id] || m.group_id;
+        // 查本地是否已有同名同组成员
+        const exist = _queryAll('SELECT id FROM members WHERE name = ? AND group_id = ?', [m.name, localGroupId]);
+        if (exist.length > 0) {
+          memberIdMap[m.id] = exist[0].id;
+        } else {
+          // 新成员，用新ID插入
+          const r = _exec('INSERT INTO members (name, group_id, created_at) VALUES (?,?,?)',
+            [m.name, localGroupId, m.created_at]);
+          if (r.lastInsertRowid) {
+            memberIdMap[m.id] = r.lastInsertRowid;
+            added++;
+          }
+        }
       });
+
+      // 3. 合并积分记录（按 成员+类别+周次+描述 去重）
       (data.score_records || []).forEach(r => {
-        const res = _exec(`INSERT OR IGNORE INTO score_records (id, member_id, group_id, category, description,
-               individual_points, group_points, week, created_at, recorded_by)
-               VALUES (?,?,?,?,?,?,?,?,?,?)`,
-          [r.id, r.member_id, r.group_id, r.category, r.description,
-           r.individual_points, r.group_points, r.week, r.created_at, r.recorded_by]);
-        if (res.changes > 0) added++;
+        const localMemberId = memberIdMap[r.member_id] || r.member_id;
+        const localGroupId = groupIdMap[r.group_id] || r.group_id;
+        // 查本地是否已有相同记录
+        const exist = _queryAll(
+          `SELECT id FROM score_records WHERE member_id = ? AND group_id = ? AND category = ? AND description = ? AND week = ?`,
+          [localMemberId, localGroupId, r.category, r.description, r.week]
+        );
+        if (exist.length === 0) {
+          // 新记录，用新ID插入
+          const res = _exec(
+            `INSERT INTO score_records (member_id, group_id, category, description, individual_points, group_points, week, created_at, recorded_by)
+             VALUES (?,?,?,?,?,?,?,?,?)`,
+            [localMemberId, localGroupId, r.category, r.description,
+             r.individual_points, r.group_points, r.week, r.created_at, r.recorded_by]
+          );
+          if (res.changes > 0) added++;
+        }
       });
+
       (data.settings || []).forEach(s => {
         _exec('INSERT OR REPLACE INTO settings (key, value) VALUES (?,?)', [s.key, s.value]);
       });
+
       // 更新自增序列
       try {
         _exec("UPDATE sqlite_sequence SET seq = (SELECT MAX(id) FROM groups) WHERE name='groups'");
