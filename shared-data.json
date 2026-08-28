@@ -2,46 +2,46 @@
   "_meta": {
     "app": "score-system",
     "version": 1,
-    "exported_at": "2026-08-28 17:41:48"
+    "exported_at": "2026-08-28 17:42:02"
   },
   "groups": [
     {
       "id": 1,
       "name": "胡楚睿组",
       "leader_name": "胡楚睿",
-      "created_at": "2026-08-28 12:03:13"
+      "created_at": "2026-08-28 12:03:11"
+    },
+    {
+      "id": 2,
+      "name": "李明轩组",
+      "leader_name": "李明轩",
+      "created_at": "2026-08-28 12:03:11"
+    },
+    {
+      "id": 3,
+      "name": "王思涵组",
+      "leader_name": "王思涵",
+      "created_at": "2026-08-28 12:03:11"
     },
     {
       "id": 4,
       "name": "刘志强组",
       "leader_name": "涂佳豪",
       "created_at": "2026-08-28 12:45:39"
-    },
-    {
-      "id": 5,
-      "name": "李明轩组",
-      "leader_name": "李明轩",
-      "created_at": "2026-08-28 12:23:40"
-    },
-    {
-      "id": 6,
-      "name": "王思涵组",
-      "leader_name": "王思涵",
-      "created_at": "2026-08-28 12:23:40"
     }
   ],
   "members": [
     {
       "id": 1,
-      "name": "涂佳豪",
-      "group_id": 4,
-      "created_at": "2026-08-28 12:48:35"
+      "name": "李子铭",
+      "group_id": 1,
+      "created_at": "2026-08-28 12:32:11"
     },
     {
       "id": 2,
-      "name": "刘志强",
-      "group_id": 4,
-      "created_at": "2026-08-28 12:48:44"
+      "name": "高浩怡",
+      "group_id": 1,
+      "created_at": "2026-08-28 12:33:22"
     },
     {
       "id": 3,
@@ -51,15 +51,15 @@
     },
     {
       "id": 4,
-      "name": "李子铭",
-      "group_id": 1,
-      "created_at": "2026-08-28 12:32:11"
+      "name": "涂佳豪",
+      "group_id": 4,
+      "created_at": "2026-08-28 12:48:35"
     },
     {
       "id": 5,
-      "name": "高浩怡",
-      "group_id": 1,
-      "created_at": "2026-08-28 12:33:22"
+      "name": "刘志强",
+      "group_id": 4,
+      "created_at": "2026-08-28 12:48:44"
     },
     {
       "id": 6,
@@ -118,19 +118,7 @@
   ],
   "score_records": [
     {
-      "id": 1444,
-      "member_id": null,
-      "group_id": 4,
-      "category": 1,
-      "description": "",
-      "individual_points": 5,
-      "group_points": 10,
-      "week": "2026-W35",
-      "created_at": "2026-08-28 17:36:26",
-      "recorded_by": "管理员"
-    },
-    {
-      "id": 1445,
+      "id": 1,
       "member_id": 6,
       "group_id": 1,
       "category": 3,
@@ -142,7 +130,7 @@
       "recorded_by": "管理员"
     },
     {
-      "id": 1446,
+      "id": 2,
       "member_id": 8,
       "group_id": 1,
       "category": 3,
@@ -154,7 +142,7 @@
       "recorded_by": "管理员"
     },
     {
-      "id": 1447,
+      "id": 3,
       "member_id": null,
       "group_id": 1,
       "category": 2,
@@ -166,7 +154,7 @@
       "recorded_by": "管理员"
     },
     {
-      "id": 1448,
+      "id": 4,
       "member_id": 8,
       "group_id": 1,
       "category": 3,
@@ -178,7 +166,7 @@
       "recorded_by": "分享板自动"
     },
     {
-      "id": 1449,
+      "id": 5,
       "member_id": 8,
       "group_id": 1,
       "category": 3,
@@ -190,7 +178,7 @@
       "recorded_by": "分享板自动"
     },
     {
-      "id": 1450,
+      "id": 6,
       "member_id": 3,
       "group_id": 1,
       "category": 3,
@@ -202,8 +190,8 @@
       "recorded_by": "分享板自动"
     },
     {
-      "id": 1451,
-      "member_id": 2,
+      "id": 7,
+      "member_id": 5,
       "group_id": 4,
       "category": 5,
       "description": "",
@@ -212,11 +200,23 @@
       "week": "2026-W35",
       "created_at": "2026-08-28 17:36:19",
       "recorded_by": "管理员"
+    },
+    {
+      "id": 8,
+      "member_id": 5,
+      "group_id": 4,
+      "category": 1,
+      "description": "",
+      "individual_points": 5,
+      "group_points": 0,
+      "week": "2026-W35",
+      "created_at": "2026-08-28 17:41:58",
+      "recorded_by": "管理员"
     }
   ],
   "shares": [
     {
-      "id": 2,
+      "id": 1,
       "member_id": 8,
       "group_id": 1,
       "title": "666",
@@ -228,7 +228,7 @@
       "is_announcement": 0
     },
     {
-      "id": 3,
+      "id": 2,
       "member_id": 8,
       "group_id": 1,
       "title": "",
@@ -240,7 +240,7 @@
       "is_announcement": 0
     },
     {
-      "id": 4,
+      "id": 3,
       "member_id": 3,
       "group_id": 1,
       "title": "",
