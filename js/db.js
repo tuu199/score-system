@@ -447,6 +447,44 @@
     });
   }
 
+  /** 合并远端 JSON 到本地（不覆盖本地已有数据，按 ID 去重） */
+  function mergeJSON(data) {
+    if (!data || !Array.isArray(data.groups) || !Array.isArray(data.score_records)) {
+      throw new Error('JSON 数据格式无效');
+    }
+    return _mutate(() => {
+      let added = 0;
+      (data.groups || []).forEach(g => {
+        const r = _exec('INSERT OR IGNORE INTO groups (id, name, leader_name, created_at) VALUES (?,?,?,?)',
+          [g.id, g.name, g.leader_name, g.created_at]);
+        if (r.changes > 0) added++;
+      });
+      (data.members || []).forEach(m => {
+        const r = _exec('INSERT OR IGNORE INTO members (id, name, group_id, created_at) VALUES (?,?,?,?)',
+          [m.id, m.name, m.group_id, m.created_at]);
+        if (r.changes > 0) added++;
+      });
+      (data.score_records || []).forEach(r => {
+        const res = _exec(`INSERT OR IGNORE INTO score_records (id, member_id, group_id, category, description,
+               individual_points, group_points, week, created_at, recorded_by)
+               VALUES (?,?,?,?,?,?,?,?,?,?)`,
+          [r.id, r.member_id, r.group_id, r.category, r.description,
+           r.individual_points, r.group_points, r.week, r.created_at, r.recorded_by]);
+        if (res.changes > 0) added++;
+      });
+      (data.settings || []).forEach(s => {
+        _exec('INSERT OR REPLACE INTO settings (key, value) VALUES (?,?)', [s.key, s.value]);
+      });
+      // 更新自增序列
+      try {
+        _exec("UPDATE sqlite_sequence SET seq = (SELECT MAX(id) FROM groups) WHERE name='groups'");
+        _exec("UPDATE sqlite_sequence SET seq = (SELECT MAX(id) FROM members) WHERE name='members'");
+        _exec("UPDATE sqlite_sequence SET seq = (SELECT MAX(id) FROM score_records) WHERE name='score_records'");
+      } catch (e) { /* ignore */ }
+      return added;
+    });
+  }
+
   /** 从 URL 加载 JSON 数据（学生端用），返回 Promise */
   async function loadFromURL(url) {
     // 添加时间戳防止浏览器缓存旧数据
@@ -515,7 +553,7 @@
     // settings
     getSetting, setSetting, getPassword, setPassword, checkPassword,
     // persistence
-    exportDatabase, importDatabase, exportJSON, importJSON, loadFromURL,
+    exportDatabase, importDatabase, exportJSON, importJSON, mergeJSON, loadFromURL,
     // week utils
     getCurrentWeek, getRecentWeeks,
     // seed

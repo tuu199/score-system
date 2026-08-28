@@ -134,27 +134,35 @@
 
   /** ========== 导入导出 ========== */
   function setupIO() {
-    // 导出 JSON + 上传到 GitHub（通过 GitHub API，手机端也能用）
+    // 导出 JSON + 上传到 GitHub（先合并远端，再上传，避免覆盖他人数据）
     document.getElementById('btn-export-json')?.addEventListener('click', async () => {
       if (!isAdmin) { Utils.toast('需要管理员权限', 'error'); return; }
       try {
         const token = String.fromCharCode(103,104,112,95,99,90,77,119,121,86,101,84,108,120,82,54,49,49,82,113,120,104,104,86,102,82,105,88,119,122,104,111,116,49,50,117,74,118,81,77);
-        const data = DB.exportJSON();
-        const jsonStr = JSON.stringify(data, null, 2);
-        const blob = new Blob([jsonStr], { type: 'application/json' });
-        Utils.downloadBlob(blob, `score_${new Date().toISOString().slice(0, 10)}.json`, 'application/json');
-        Utils.toast('正在上传到 GitHub…', 'success');
         const repo = 'tuu199/score-system';
         const apiUrl = `https://api.github.com/repos/${repo}/contents/shared-data.json`;
-        // 获取当前文件 SHA（更新文件需要）
+        // 第一步：获取远端数据并合并到本地
+        Utils.toast('正在合并远端数据…', 'success');
         let sha = null;
+        let remoteData = null;
         try {
           const getResp = await fetch(apiUrl, {
             headers: { 'Authorization': `token ${token}`, 'Accept': 'application/vnd.github.v3+json' }
           });
-          if (getResp.ok) { const f = await getResp.json(); sha = f.sha; }
+          if (getResp.ok) {
+            const f = await getResp.json();
+            sha = f.sha;
+            const content = decodeURIComponent(escape(atob(f.content.replace(/\n/g, ''))));
+            remoteData = JSON.parse(content);
+          }
         } catch (e) { /* 文件可能不存在 */ }
-        // Base64 编码（支持中文）
+        if (remoteData) {
+          DB.mergeJSON(remoteData);
+        }
+        // 第二步：导出合并后的数据并上传
+        const data = DB.exportJSON();
+        const jsonStr = JSON.stringify(data, null, 2);
+        Utils.toast('正在上传到 GitHub…', 'success');
         const b64 = btoa(unescape(encodeURIComponent(jsonStr)));
         const putResp = await fetch(apiUrl, {
           method: 'PUT',
@@ -170,21 +178,20 @@
           throw new Error(err.message || 'HTTP ' + putResp.status);
         }
         DB.setSetting('shared_data_url', '/shared-data.json');
-        Utils.toast('已上传! 1-2 分钟后学生刷新可见', 'success');
+        Utils.toast('已上传（含合并数据）! 1-2 分钟后学生刷新可见', 'success');
       } catch (e) { Utils.toast('上传失败：' + e.message, 'error'); }
     });
-    // 同步：直接从 GitHub Pages 拉取最新数据（手机端也能用）
+    // 同步：从公网拉取最新数据并合并到本地（不覆盖本地已有数据）
     document.getElementById('btn-sync')?.addEventListener('click', async () => {
       if (!isAdmin) { Utils.toast('需要管理员权限', 'error'); return; }
-      if (!Utils.confirm('将从公网拉取最新数据并覆盖本地，确定继续？')) return;
       try {
         Utils.toast('正在同步…', 'success');
         const url = 'https://tuu199.github.io/score-system/shared-data.json?_t=' + Date.now();
         const res = await fetch(url);
         if (!res.ok) throw new Error('HTTP ' + res.status);
         const data = await res.json();
-        DB.importJSON(data);
-        Utils.toast('同步成功，正在刷新…', 'success');
+        const added = DB.mergeJSON(data);
+        Utils.toast(`同步成功，新增 ${added} 条记录，正在刷新…`, 'success');
         setTimeout(() => global.location.reload(), 600);
       } catch (e) { Utils.toast('同步失败：' + e.message, 'error'); }
     });
