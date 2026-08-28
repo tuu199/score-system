@@ -64,8 +64,10 @@
       }
     }
     view.innerHTML = '';
-    // 清除可能残留的模态弹窗（小组编辑/组员管理等）
-    document.querySelectorAll('body > .modal').forEach(m => m.remove());
+    // 清除可能残留的模态弹窗（小组编辑/组员管理等），但保留 login-modal 和 qrcode-modal
+    document.querySelectorAll('body > .modal').forEach(m => {
+      if (m.id !== 'login-modal' && m.id !== 'qrcode-modal') m.remove();
+    });
     currentView = view;
     currentModuleId = id;
     renderNav();
