@@ -59,9 +59,10 @@
         const title = annTitle.value.trim();
         const content = annContent.value.trim();
         if (!content) { Utils.toast('请填写公告内容', 'error'); return; }
+        if (!groups.length) { Utils.toast('请先创建至少一个小组', 'error'); return; }
         try {
           DB.addShare({
-            member_id: null, group_id: groups[0]?.id || 1,
+            member_id: null, group_id: groups[0].id,
             title, content, link: annLink.value.trim(),
             image_data: '', week: currentWeek, is_announcement: true,
           });

@@ -32,7 +32,7 @@
       let desc = `💬 分享：${s.member_name || '未知'}（${s.group_name}）`;
       if (s.title) desc += `「${s.title}」`;
       const preview = (s.content || '').slice(0, 40);
-      if (preview) desc += ` ${preview}${s.content.length > 40 ? '…' : ''}`;
+      if (preview) desc += ` ${preview}${(s.content || '').length > 40 ? '…' : ''}`;
       if (s.image_data) desc += ' [图片]';
       if (s.link) desc += ' [链接]';
       timeline.push({

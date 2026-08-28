@@ -314,7 +314,7 @@
         _exec(
           `INSERT INTO score_records (member_id, group_id, category, description, individual_points, group_points, week, created_at, recorded_by)
            VALUES (?,?,?,?,?,?,?,?,?)`,
-          [member_id || null, group_id, 3, '群分享：' + (title || content.slice(0, 20)),
+          [member_id || null, group_id, 3, '群分享：' + (title || (content || '').slice(0, 20)),
            1, 0, week || '', Utils.formatDate(), '分享板自动']
         );
       }
@@ -449,6 +449,15 @@
       }
       db.close();
       db = newDb;
+      // 确保 schema 完整（旧备份可能缺 shares 表等）
+      _exec(SCHEMA);
+      try {
+        const cols = _queryAll('PRAGMA table_info(shares)');
+        if (cols.length > 0) {
+          if (!cols.some(c => c.name === 'image_data')) _exec('ALTER TABLE shares ADD COLUMN image_data TEXT');
+          if (!cols.some(c => c.name === 'is_announcement')) _exec('ALTER TABLE shares ADD COLUMN is_announcement INTEGER DEFAULT 0');
+        }
+      } catch (e) { /* ignore */ }
       db.run('PRAGMA foreign_keys = ON');
       return true;
     });
@@ -619,12 +628,16 @@
   }
 
   /** ========== 周次工具 ========== */
+  function _isoWeek(d) {
+    const date = new Date(Date.UTC(d.getFullYear(), d.getMonth(), d.getDate()));
+    const dayNum = date.getUTCDay() || 7;
+    date.setUTCDate(date.getUTCDate() + 4 - dayNum);
+    const yearStart = new Date(Date.UTC(date.getUTCFullYear(), 0, 1));
+    const week = Math.ceil(((date - yearStart) / 86400000 + 1) / 7);
+    return `${date.getUTCFullYear()}-W${String(week).padStart(2, '0')}`;
+  }
   function getCurrentWeek() {
-    const d = new Date();
-    const year = d.getFullYear();
-    const start = new Date(year, 0, 1);
-    const week = Math.ceil(((d - start) / 86400000 + start.getDay() + 1) / 7);
-    return `${year}-W${String(week).padStart(2, '0')}`;
+    return _isoWeek(new Date());
   }
   function getRecentWeeks(count = 12) {
     const weeks = [];
@@ -632,10 +645,7 @@
     for (let i = 0; i < count; i++) {
       const d = new Date(now);
       d.setDate(d.getDate() - i * 7);
-      const year = d.getFullYear();
-      const start = new Date(year, 0, 1);
-      const week = Math.ceil(((d - start) / 86400000 + start.getDay() + 1) / 7);
-      weeks.push(`${year}-W${String(week).padStart(2, '0')}`);
+      weeks.push(_isoWeek(d));
     }
     return weeks;
   }
