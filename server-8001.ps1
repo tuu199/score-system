@@ -93,6 +93,10 @@ while ($listener.IsListening) {
         $bytes = [System.IO.File]::ReadAllBytes($path)
       }
       $ctx.Response.ContentType = $mime
+      # 强制不缓存，确保每次加载最新版本
+      $ctx.Response.Headers.Add('Cache-Control', 'no-cache, no-store, must-revalidate')
+      $ctx.Response.Headers.Add('Pragma', 'no-cache')
+      $ctx.Response.Headers.Add('Expires', '0')
       $ctx.Response.OutputStream.Write($bytes, 0, $bytes.Length)
     } else {
       $ctx.Response.StatusCode = 404

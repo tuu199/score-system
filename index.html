@@ -7,8 +7,8 @@
   <meta http-equiv="Pragma" content="no-cache" />
   <meta http-equiv="Expires" content="0" />
   <title>尖刀排 · 学习积分系统</title>
-  <link rel="stylesheet" href="css/style.css?v=36" />
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/sql.js/1.10.3/sql-wasm.js"></script>
+  <link rel="stylesheet" href="css/style.css?v=41" />
+  <script src="js/lib/supabase.min.js?v=41"></script>
   <script src="https://cdn.jsdelivr.net/npm/qrcodejs@1.0.0/qrcode.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
 </head>
@@ -24,8 +24,8 @@
       <span id="mode-badge" class="mode-badge student">学生</span>
       <button id="btn-mode" class="btn btn-ghost btn-sm">管理员登录</button>
       <button id="btn-qrcode" class="btn btn-ghost btn-sm" title="扫码访问">📱</button>
-      <button id="btn-export-json" class="btn btn-ghost btn-sm" title="上传数据到公网">🌐</button>
-      <button id="btn-sync" class="btn btn-ghost btn-sm" title="同步公网最新数据">🔄</button>
+      <button id="btn-export-json" class="btn btn-ghost btn-sm" title="导出数据为JSON文件">💾</button>
+      <button id="btn-sync" class="btn btn-ghost btn-sm" title="刷新云端最新数据">🔄</button>
       <button id="btn-clear" class="btn btn-ghost btn-sm" title="清零所有积分和分享" style="display:none">🗑️</button>
     </div>
   </header>
@@ -83,18 +83,19 @@
   <nav id="mobile-nav" class="mobile-nav"><!-- 动态填充 --></nav>
 
   <!-- 脚本加载（带版本号防缓存） -->
-  <script src="js/utils.js?v=36"></script>
-  <script src="js/db.js?v=36"></script>
-  <script src="js/app.js?v=36"></script>
+  <script src="js/utils.js?v=41"></script>
+  <script src="js/db.js?v=41"></script>
+  <script src="js/app.js?v=41"></script>
   <!-- 功能模块 -->
-  <script src="js/modules/rules.js?v=36"></script>
-  <script src="js/modules/groups.js?v=36"></script>
-  <script src="js/modules/record.js?v=36"></script>
-  <script src="js/modules/search.js?v=36"></script>
-  <script src="js/modules/statistics.js?v=36"></script>
-  <script src="js/modules/ranking.js?v=36"></script>
-  <script src="js/modules/shares.js?v=36"></script>
-  <script src="js/modules/history.js?v=36"></script>
+  <script src="js/modules/rules.js?v=41"></script>
+  <script src="js/modules/groups.js?v=41"></script>
+  <script src="js/modules/record.js?v=41"></script>
+  <script src="js/modules/search.js?v=41"></script>
+  <script src="js/modules/statistics.js?v=41"></script>
+  <script src="js/modules/ranking.js?v=41"></script>
+  <script src="js/modules/shares.js?v=41"></script>
+  <script src="js/modules/gallery.js?v=41"></script>
+  <script src="js/modules/history.js?v=41"></script>
 
   <script>ScoreApp.init();</script>
 </body>

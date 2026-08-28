@@ -75,9 +75,9 @@
       view.appendChild(annCard);
     }
 
-    // 发帖表单
+    // 发帖表单（学生+管理员均可发布）
     const formCard = Utils.el('div', { class: 'card' }, [
-      Utils.el('div', { class: 'card-title' }, ['✏️ 发布分享']),
+      Utils.el('div', { class: 'card-title' }, ['✏️ 发布分享（自动+1分）']),
     ]);
 
     // 小组选择
