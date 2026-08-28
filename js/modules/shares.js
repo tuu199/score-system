@@ -201,7 +201,7 @@
 
     // 匿名发布选项
     const anonCheckbox = Utils.el('input', { type: 'checkbox', id: 'share-anon', style: { marginRight: '6px' } });
-    const anonLabel = Utils.el('label', { style: { display: 'flex', alignItems: 'center', cursor: 'pointer' } }, [anonCheckbox, Utils.el('span', {}, ['🕶️ 匿名发布（不显示姓名，不加分）')]);
+    const anonLabel = Utils.el('label', { style: { display: 'flex', alignItems: 'center', cursor: 'pointer' } }, [anonCheckbox, Utils.el('span', {}, ['🕶️ 匿名发布（不显示姓名，不加分）'])]);
     formCard.appendChild(Utils.el('div', { class: 'form-row' }, [anonLabel]));
 
     // 提交按钮
