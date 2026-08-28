@@ -24,6 +24,56 @@
       ]),
     ]));
 
+    // 管理员公告发布区（仅管理员可见）
+    if (ScoreApp.isAdmin) {
+      const annCard = Utils.el('div', { class: 'card', style: { borderLeft: '4px solid #f59e0b' } });
+      annCard.appendChild(Utils.el('div', { class: 'card-title' }, ['📢 发布通知/公告（管理员）']));
+
+      const annTitle = Utils.el('input', {
+        class: 'form-input', type: 'text', placeholder: '公告标题（如：本周注意事项）', id: 'ann-title',
+      });
+      annCard.appendChild(Utils.el('div', { class: 'form-row' }, [
+        Utils.el('label', {}, ['标题']), annTitle,
+      ]));
+
+      const annContent = Utils.el('textarea', {
+        class: 'form-input', placeholder: '公告内容（支持粘贴文档链接、网盘链接等）',
+        id: 'ann-content', rows: 3, style: { width: '100%', resize: 'vertical' },
+      });
+      annCard.appendChild(Utils.el('div', { class: 'form-row' }, [
+        Utils.el('label', {}, ['内容']), annContent,
+      ]));
+
+      const annLink = Utils.el('input', {
+        class: 'form-input', type: 'text', placeholder: '链接（可选，网盘/文档网址）', id: 'ann-link',
+      });
+      annCard.appendChild(Utils.el('div', { class: 'form-row' }, [
+        Utils.el('label', {}, ['链接']), annLink,
+      ]));
+
+      const annBtn = Utils.el('button', {
+        class: 'btn btn-primary',
+        style: { marginTop: '10px', width: '100%', background: '#f59e0b' },
+      }, ['📢 发布公告（置顶，不加分）']);
+      annBtn.addEventListener('click', () => {
+        const title = annTitle.value.trim();
+        const content = annContent.value.trim();
+        if (!content) { Utils.toast('请填写公告内容', 'error'); return; }
+        try {
+          DB.addShare({
+            member_id: null, group_id: groups[0]?.id || 1,
+            title, content, link: annLink.value.trim(),
+            image_data: '', week: currentWeek, is_announcement: true,
+          });
+          Utils.toast('公告已发布', 'success');
+          annTitle.value = ''; annContent.value = ''; annLink.value = '';
+          ScoreApp.navigate('shares');
+        } catch (e) { Utils.toast('发布失败：' + e.message, 'error'); }
+      });
+      annCard.appendChild(annBtn);
+      view.appendChild(annCard);
+    }
+
     // 发帖表单
     const formCard = Utils.el('div', { class: 'card' }, [
       Utils.el('div', { class: 'card-title' }, ['✏️ 发布分享']),
@@ -211,11 +261,15 @@
       }
 
       list.forEach(s => {
-        const card = Utils.el('div', { class: 'share-card' });
+        const isAnn = s.is_announcement === 1;
+        const card = Utils.el('div', {
+          class: 'share-card',
+          style: isAnn ? { borderLeft: '4px solid #f59e0b', background: '#fffbeb' } : {},
+        });
         // 头部：姓名 + 小组 + 时间
         card.appendChild(Utils.el('div', { class: 'share-header' }, [
-          Utils.el('span', { class: 'share-author' }, [s.member_name || '未知']),
-          Utils.el('span', { class: 'share-group' }, [s.group_name]),
+          Utils.el('span', { class: 'share-author' }, [isAnn ? '📢 管理员公告' : (s.member_name || '未知')]),
+          Utils.el('span', { class: 'share-group' }, [isAnn ? '通知' : s.group_name]),
           Utils.el('span', { class: 'share-time' }, [s.created_at]),
         ]));
         // 标题

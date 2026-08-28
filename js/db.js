@@ -71,6 +71,7 @@
       image_data  TEXT,
       week        TEXT,
       created_at  TEXT NOT NULL,
+      is_announcement INTEGER DEFAULT 0,
       FOREIGN KEY (group_id) REFERENCES groups(id) ON DELETE CASCADE,
       FOREIGN KEY (member_id) REFERENCES members(id) ON DELETE SET NULL
     )`,
@@ -91,11 +92,12 @@
     global.localStorage.removeItem(OLD_KEY);
     db = _loadFromStorage() || new SQL.Database();
     _exec(SCHEMA);
-    // 迁移：给已有的 shares 表补 image_data 列
+    // 迁移：给已有的 shares 表补 image_data 和 is_announcement 列
     try {
       const cols = _queryAll('PRAGMA table_info(shares)');
-      if (cols.length > 0 && !cols.some(c => c.name === 'image_data')) {
-        _exec('ALTER TABLE shares ADD COLUMN image_data TEXT');
+      if (cols.length > 0) {
+        if (!cols.some(c => c.name === 'image_data')) _exec('ALTER TABLE shares ADD COLUMN image_data TEXT');
+        if (!cols.some(c => c.name === 'is_announcement')) _exec('ALTER TABLE shares ADD COLUMN is_announcement INTEGER DEFAULT 0');
       }
     } catch (e) { /* shares 表可能不存在，忽略 */ }
     db.run('PRAGMA foreign_keys = ON');
@@ -296,24 +298,26 @@
                  JOIN groups g ON g.id = s.group_id
                  LEFT JOIN members m ON m.id = s.member_id
                  ${where.length ? 'WHERE ' + where.join(' AND ') : ''}
-                 ORDER BY s.created_at DESC, s.id DESC`;
+                 ORDER BY s.is_announcement DESC, s.created_at DESC, s.id DESC`;
     return _queryAll(sql, params);
   }
-  function addShare({ member_id, group_id, title, content, link, image_data, week }) {
+  function addShare({ member_id, group_id, title, content, link, image_data, week, is_announcement }) {
     return _mutate(() => {
       _exec(
-        `INSERT INTO shares (member_id, group_id, title, content, link, image_data, week, created_at)
-         VALUES (?,?,?,?,?,?,?,?)`,
-        [member_id || null, group_id, title || '', content, link || '', image_data || '', week || '',
-         Utils.formatDate()]
-      );
-      // 自动加 1 分（群分享，category=3）
-      _exec(
-        `INSERT INTO score_records (member_id, group_id, category, description, individual_points, group_points, week, created_at, recorded_by)
+        `INSERT INTO shares (member_id, group_id, title, content, link, image_data, week, created_at, is_announcement)
          VALUES (?,?,?,?,?,?,?,?,?)`,
-        [member_id || null, group_id, 3, '群分享：' + (title || content.slice(0, 20)),
-         1, 0, week || '', Utils.formatDate(), '分享板自动']
+        [member_id || null, group_id, title || '', content, link || '', image_data || '', week || '',
+         Utils.formatDate(), is_announcement ? 1 : 0]
       );
+      // 普通分享自动加1分（公告不加积分）
+      if (!is_announcement) {
+        _exec(
+          `INSERT INTO score_records (member_id, group_id, category, description, individual_points, group_points, week, created_at, recorded_by)
+           VALUES (?,?,?,?,?,?,?,?,?)`,
+          [member_id || null, group_id, 3, '群分享：' + (title || content.slice(0, 20)),
+           1, 0, week || '', Utils.formatDate(), '分享板自动']
+        );
+      }
       return _lastId();
     });
   }
@@ -459,7 +463,7 @@
                                individual_points, group_points, week, created_at, recorded_by
                                FROM score_records ORDER BY id`);
     const settings = _queryAll('SELECT key, value FROM settings');
-    const shares = _queryAll('SELECT id, member_id, group_id, title, content, link, image_data, week, created_at FROM shares ORDER BY id');
+    const shares = _queryAll('SELECT id, member_id, group_id, title, content, link, image_data, week, created_at, is_announcement FROM shares ORDER BY id');
     return {
       _meta: { app: 'score-system', version: 1, exported_at: Utils.formatDate() },
       groups, members, score_records: records, shares, settings,
@@ -497,8 +501,8 @@
         _exec('INSERT OR REPLACE INTO settings (key, value) VALUES (?,?)', [s.key, s.value]);
       });
       (data.shares || []).forEach(s => {
-        _exec('INSERT INTO shares (id, member_id, group_id, title, content, link, image_data, week, created_at) VALUES (?,?,?,?,?,?,?,?)',
-          [s.id, s.member_id, s.group_id, s.title, s.content, s.link, s.image_data || '', s.week, s.created_at]);
+        _exec('INSERT INTO shares (id, member_id, group_id, title, content, link, image_data, week, created_at, is_announcement) VALUES (?,?,?,?,?,?,?,?,?,?)',
+          [s.id, s.member_id, s.group_id, s.title, s.content, s.link, s.image_data || '', s.week, s.created_at, s.is_announcement || 0]);
       });
       // 重置自增序列，避免下次插入冲突
       try {
@@ -589,13 +593,13 @@
         const localMemberId = s.member_id ? (memberIdMap[s.member_id] || s.member_id) : null;
         const localGroupId = groupIdMap[s.group_id] || s.group_id;
         const exist = _queryAll(
-          'SELECT id FROM shares WHERE member_id IS ? AND content = ? AND week = ?',
+          'SELECT id FROM shares WHERE member_id IS ? AND content IS ? AND week IS ?',
           [localMemberId, s.content, s.week]
         );
         if (exist.length === 0) {
           _exec(
-            'INSERT INTO shares (member_id, group_id, title, content, link, image_data, week, created_at) VALUES (?,?,?,?,?,?,?,?)',
-            [localMemberId, localGroupId, s.title, s.content, s.link, s.image_data || '', s.week, s.created_at]
+            'INSERT INTO shares (member_id, group_id, title, content, link, image_data, week, created_at, is_announcement) VALUES (?,?,?,?,?,?,?,?,?)',
+            [localMemberId, localGroupId, s.title, s.content, s.link, s.image_data || '', s.week, s.created_at, s.is_announcement || 0]
           );
           added++;
         }
