@@ -33,7 +33,7 @@
     {
       cat: 3, icon: '💬', title: '周末及假期群分享',
       time: '周日 12:00 前汇总',
-      body: '可分享学习、能力增长、兴趣领域等内容发到此群。每人每次积1分。组长周日中午12点前汇总成员此项积分，发在群里如「胡楚睿组积*分」。',
+      body: '可分享学习、能力增长、兴趣领域等内容。在系统「分享板」发布即自动+1分，支持文字、图片、链接（B站视频可直接内嵌播放）。每人每次积1分，组长周日中午12点前汇总确认。',
       points: [
         { label: '每人每次', val: '+1 分', type: 'individual' },
       ],
@@ -107,6 +107,17 @@
       ...RULES.map(renderRuleCard),
       Utils.el('div', { style: { textAlign: 'center', color: 'var(--text-soft)', fontSize: '13px', padding: '14px 0 4px' } }, [
         '⬇️ 以上积分规则适用于管理员录入与学生查看',
+      ]),
+      Utils.el('div', { style: { background: '#f0fdf4', padding: '12px 16px', borderRadius: '8px', marginTop: '10px', fontSize: '13px', color: '#166534', lineHeight: 1.6 } }, [
+        Utils.el('strong', {}, ['💡 分享板使用提示：']),
+        Utils.el('br', {}),
+        '1. 点击「💬 分享板」进入，选小组→选姓名→写内容→发布',
+        Utils.el('br', {}),
+        '2. 支持上传图片（自动压缩）和粘贴链接（B站视频可直接内嵌播放）',
+        Utils.el('br', {}),
+        '3. 发布后自动+1个人积分，无需管理员手动录入',
+        Utils.el('br', {}),
+        '4. 分享内容留存归档，可按周次筛选查看',
       ]),
     ]));
   }
