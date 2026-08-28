@@ -288,8 +288,8 @@
             class: 'share-image',
             style: { maxWidth: '100%', borderRadius: '8px', marginTop: '8px' },
           }));
-        } else if (s.link && /\.(jpg|jpeg|png|gif|webp)(\?|$)/i.test(s.link)) {
-          // 链接是图片网址，内嵌显示
+        } else if (s.link && /^https?:\/\//i.test(s.link) && /\.(jpg|jpeg|png|gif|webp)(\?|$)/i.test(s.link)) {
+          // 链接是图片网址，内嵌显示（仅 http/https）
           card.appendChild(Utils.el('img', {
             src: s.link,
             class: 'share-image',
@@ -310,11 +310,15 @@
             });
             card.appendChild(iframe);
           } else if (!/\.(jpg|jpeg|png|gif|webp)(\?|$)/i.test(s.link)) {
-            // 普通链接
-            const linkEl = Utils.el('a', {
-              class: 'share-link', href: s.link, target: '_blank', rel: 'noopener',
-            }, ['🔗 ' + s.link]);
-            card.appendChild(linkEl);
+            // 普通链接（仅 http/https 可点击，防止 javascript: 等 XSS）
+            if (/^https?:\/\//i.test(s.link)) {
+              const linkEl = Utils.el('a', {
+                class: 'share-link', href: s.link, target: '_blank', rel: 'noopener noreferrer',
+              }, ['🔗 ' + s.link]);
+              card.appendChild(linkEl);
+            } else {
+              card.appendChild(Utils.el('span', { class: 'share-link', style: { color: 'var(--text-soft)', wordBreak: 'break-all' } }, ['🔗 ' + s.link]));
+            }
           }
         }
         // 底部：周次 + 删除按钮（管理员可删）

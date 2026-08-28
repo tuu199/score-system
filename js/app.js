@@ -326,20 +326,23 @@
     try {
       await DB.init();
       try { DB.seedIfEmpty(); } catch (e) { /* 忽略 */ }
+      // 恢复管理员登录状态（刷新后不丢失）——需先于 ?data= 加载，防止覆盖管理员本地未上传的数据
+      if (localStorage.getItem('score_admin') === '1') {
+        isAdmin = true;
+      }
       // 学生端：检测 URL 中的 ?data=<json-url>，自动加载共享数据
+      // 管理员恢复状态时跳过自动覆盖，避免丢失未上传的录入
       const params = new URLSearchParams(global.location.search);
       const dataUrl = params.get('data');
-      if (dataUrl) {
+      if (dataUrl && !isAdmin) {
         try {
           await DB.loadFromURL(dataUrl);
           Utils.toast('已加载最新积分数据', 'success');
         } catch (e) {
           Utils.toast('加载数据失败：' + e.message, 'error');
         }
-      }
-      // 恢复管理员登录状态（刷新后不丢失）
-      if (localStorage.getItem('score_admin') === '1') {
-        isAdmin = true;
+      } else if (dataUrl && isAdmin) {
+        Utils.toast('检测到数据链接，管理员模式保留本地数据，如需更新请用🔄同步', 'info');
       }
       setupIO();
       setupQrcode();
