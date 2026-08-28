@@ -64,6 +64,8 @@
       }
     }
     view.innerHTML = '';
+    // 清除可能残留的模态弹窗（小组编辑/组员管理等）
+    document.querySelectorAll('body > .modal').forEach(m => m.remove());
     currentView = view;
     currentModuleId = id;
     renderNav();
