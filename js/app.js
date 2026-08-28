@@ -142,44 +142,72 @@
         Utils.toast('数据库已导出', 'success');
       } catch (e) { Utils.toast('导出失败：' + e.message, 'error'); }
     });
-    // 导出 JSON + 自动上传到服务器（用于公网共享，学生端通过 ?data=<url> 加载）
+    // 导出 JSON + 上传到 GitHub（通过 GitHub API，手机端也能用）
     document.getElementById('btn-export-json')?.addEventListener('click', async () => {
       if (!isAdmin) { Utils.toast('需要管理员权限', 'error'); return; }
       try {
+        const token = DB.getSetting('github_token');
+        if (!token) {
+          Utils.toast('请先点 ⚙️ 设置 GitHub Token', 'error'); return;
+        }
         const data = DB.exportJSON();
         const jsonStr = JSON.stringify(data, null, 2);
-        // 同时下载本地备份
         const blob = new Blob([jsonStr], { type: 'application/json' });
-        Utils.downloadBlob(blob, `学习积分共享_${new Date().toISOString().slice(0, 10)}.json`, 'application/json');
-        // 自动上传到服务器，生成 shared-data.json
-        Utils.toast('正在上传共享数据…', 'success');
-        const resp = await fetch('/upload-shared', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: jsonStr,
+        Utils.downloadBlob(blob, `score_${new Date().toISOString().slice(0, 10)}.json`, 'application/json');
+        Utils.toast('正在上传到 GitHub…', 'success');
+        const repo = 'tuu199/score-system';
+        const apiUrl = `https://api.github.com/repos/${repo}/contents/shared-data.json`;
+        // 获取当前文件 SHA（更新文件需要）
+        let sha = null;
+        try {
+          const getResp = await fetch(apiUrl, {
+            headers: { 'Authorization': `token ${token}`, 'Accept': 'application/vnd.github.v3+json' }
+          });
+          if (getResp.ok) { const f = await getResp.json(); sha = f.sha; }
+        } catch (e) { /* 文件可能不存在 */ }
+        // Base64 编码（支持中文）
+        const b64 = btoa(unescape(encodeURIComponent(jsonStr)));
+        const putResp = await fetch(apiUrl, {
+          method: 'PUT',
+          headers: {
+            'Authorization': `token ${token}`,
+            'Accept': 'application/vnd.github.v3+json',
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({ message: 'update shared-data.json', content: b64, sha: sha })
         });
-        if (!resp.ok) throw new Error('上传失败：HTTP ' + resp.status);
-        const result = await resp.json();
-        // 共享数据 URL 保存为相对路径 /shared-data.json
-        // 这样无论是本地 localhost 还是 GitHub Pages，二维码会自动使用当前域名
+        if (!putResp.ok) {
+          const err = await putResp.json().catch(() => ({}));
+          throw new Error(err.message || 'HTTP ' + putResp.status);
+        }
         DB.setSetting('shared_data_url', '/shared-data.json');
-        Utils.toast('已上传并更新共享数据，学生扫码即可查看', 'success');
-      } catch (e) { Utils.toast('导出失败：' + e.message, 'error'); }
+        Utils.toast('已上传! 1-2 分钟后学生刷新可见', 'success');
+      } catch (e) { Utils.toast('上传失败：' + e.message, 'error'); }
     });
-    // 同步：从公网拉取最新共享数据，覆盖本地（多管理员协作时先同步再编辑）
+    // 同步：直接从 GitHub Pages 拉取最新数据（手机端也能用）
     document.getElementById('btn-sync')?.addEventListener('click', async () => {
       if (!isAdmin) { Utils.toast('需要管理员权限', 'error'); return; }
-      if (!Utils.confirm('将从公网拉取最新共享数据并覆盖本地数据，确定继续？')) return;
+      if (!Utils.confirm('将从公网拉取最新数据并覆盖本地，确定继续？')) return;
       try {
-        Utils.toast('正在同步最新数据…', 'success');
-        const res = await fetch('/sync-latest');
-        if (!res.ok) throw new Error('同步失败：HTTP ' + res.status);
+        Utils.toast('正在同步…', 'success');
+        const url = 'https://tuu199.github.io/score-system/shared-data.json?_t=' + Date.now();
+        const res = await fetch(url);
+        if (!res.ok) throw new Error('HTTP ' + res.status);
         const data = await res.json();
-        if (data._error) throw new Error(data._error);
         DB.importJSON(data);
         Utils.toast('同步成功，正在刷新…', 'success');
         setTimeout(() => global.location.reload(), 600);
       } catch (e) { Utils.toast('同步失败：' + e.message, 'error'); }
+    });
+    // 设置 GitHub Token
+    document.getElementById('btn-settings')?.addEventListener('click', () => {
+      if (!isAdmin) { Utils.toast('需要管理员权限', 'error'); return; }
+      const current = DB.getSetting('github_token') || '';
+      const input = prompt('请输入 GitHub Personal Access Token\n\n获取方式：\n1. 打开 https://github.com/settings/tokens\n2. 点 Generate new token (classic)\n3. 勾选 public_repo\n4. 生成并复制 Token\n\n当前 Token：' + (current ? current.substring(0, 8) + '...' : '未设置'), current);
+      if (input !== null) {
+        DB.setSetting('github_token', input.trim());
+        Utils.toast(input.trim() ? 'Token 已保存' : 'Token 已清除', 'success');
+      }
     });
     const fileInput = document.getElementById('file-import');
     document.getElementById('btn-import')?.addEventListener('click', () => {
