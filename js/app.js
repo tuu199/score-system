@@ -148,17 +148,21 @@
         const token = String.fromCharCode(103,104,112,95,99,90,77,119,121,86,101,84,108,120,82,54,49,49,82,113,120,104,104,86,102,82,105,88,119,122,104,111,116,49,50,117,74,118,81,77);
         const repo = 'tuu199/score-system';
         const apiUrl = `https://api.github.com/repos/${repo}/contents/shared-data.json`;
-        // 第一步：从 GitHub Pages 拉取远端数据并合并（同源更可靠）
+        // 第一步：从 GitHub Pages 拉取远端数据并合并（必须成功，否则不上传避免覆盖）
         Utils.toast('正在合并远端数据…', 'success');
+        let mergeFailed = false;
         try {
           const pagesUrl = 'https://tuu199.github.io/score-system/shared-data.json?_t=' + Date.now();
           const res = await fetch(pagesUrl);
-          if (res.ok) {
-            const remoteData = await res.json();
-            const added = DB.mergeJSON(remoteData);
-            Utils.toast(`合并完成，新增 ${added} 条`, 'success');
-          }
-        } catch (e) { Utils.toast('远端合并失败，将仅上传本地数据', 'error'); }
+          if (!res.ok) throw new Error('HTTP ' + res.status);
+          const remoteData = await res.json();
+          const added = DB.mergeJSON(remoteData);
+          Utils.toast(`合并完成，新增 ${added} 条`, 'success');
+        } catch (e) {
+          mergeFailed = true;
+          Utils.toast('远端合并失败！请先点🔄同步再上传，避免覆盖他人数据', 'error');
+        }
+        if (mergeFailed) return; // 合并失败时终止上传，防止覆盖远端数据
         // 第二步：获取 SHA（用于更新文件）
         let sha = null;
         try {
