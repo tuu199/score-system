@@ -1,1 +1,49 @@
-{"_meta":{"app":"score-system","version":1},"groups":[],"members":[],"score_records":[],"settings":[]}
+{
+  "_meta": {
+    "app": "score-system",
+    "version": 1,
+    "exported_at": "2026-08-28 13:39:52"
+  },
+  "groups": [
+    {
+      "id": 1,
+      "name": "胡楚睿组",
+      "leader_name": "胡楚睿",
+      "created_at": "2026-08-28 12:03:13"
+    },
+    {
+      "id": 2,
+      "name": "李明轩组",
+      "leader_name": "李明轩",
+      "created_at": "2026-08-28 12:03:13"
+    },
+    {
+      "id": 3,
+      "name": "王思涵组",
+      "leader_name": "王思涵",
+      "created_at": "2026-08-28 12:03:13"
+    },
+    {
+      "id": 4,
+      "name": "刘志强组",
+      "leader_name": "涂佳豪",
+      "created_at": "2026-08-28 12:45:39"
+    }
+  ],
+  "members": [
+    {
+      "id": 1,
+      "name": "涂佳豪",
+      "group_id": 4,
+      "created_at": "2026-08-28 12:48:35"
+    },
+    {
+      "id": 2,
+      "name": "刘志强",
+      "group_id": 4,
+      "created_at": "2026-08-28 12:48:44"
+    }
+  ],
+  "score_records": [],
+  "settings": []
+}
