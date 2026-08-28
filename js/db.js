@@ -267,6 +267,15 @@
     return _mutate(() => { _exec('DELETE FROM score_records WHERE id = ?', [id]); return true; });
   }
 
+  /** 清零所有积分记录和分享（保留小组、组员、设置） */
+  function clearAllRecords() {
+    return _mutate(() => {
+      _exec('DELETE FROM score_records');
+      _exec('DELETE FROM shares');
+      return true;
+    });
+  }
+
   /** ========== 搜索 ========== */
   function searchRecords({ keyword = '', groupId = 0, category = 0, week = '' } = {}) {
     const params = [];
@@ -677,7 +686,7 @@
     // members
     listMembers, listMembersWithGroup, getMember, addMember, updateMember, deleteMember,
     // records
-    listRecords, addRecord, updateRecord, deleteRecord,
+    listRecords, addRecord, updateRecord, deleteRecord, clearAllRecords,
     // search
     searchRecords,
     // shares

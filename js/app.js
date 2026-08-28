@@ -123,16 +123,19 @@
     const btn = document.getElementById('btn-mode');
     const badge = document.getElementById('mode-badge');
     if (!btn || !badge) return;
+    const clearBtn = document.getElementById('btn-clear');
     if (isAdmin) {
       btn.textContent = '退出管理员';
       btn.className = 'btn btn-danger btn-sm';
       badge.textContent = '管理员';
       badge.className = 'mode-badge admin';
+      if (clearBtn) clearBtn.style.display = 'inline-block';
     } else {
       btn.textContent = '管理员登录';
       btn.className = 'btn btn-ghost btn-sm';
       badge.textContent = '学生';
       badge.className = 'mode-badge student';
+      if (clearBtn) clearBtn.style.display = 'none';
     }
   }
 
@@ -199,6 +202,15 @@
         Utils.toast(`同步成功，新增 ${added} 条记录，正在刷新…`, 'success');
         setTimeout(() => global.location.reload(), 600);
       } catch (e) { Utils.toast('同步失败：' + e.message, 'error'); }
+    });
+    // 清零所有积分记录和分享（保留小组、组员）
+    document.getElementById('btn-clear')?.addEventListener('click', async () => {
+      if (!isAdmin) { Utils.toast('需要管理员权限', 'error'); return; }
+      if (!await Utils.confirm('⚠️ 确认清零所有积分记录和分享？\n此操作不可撤销，请先上传备份！')) return;
+      if (!await Utils.confirm('再次确认：积分和分享将被全部删除，小组和组员保留。')) return;
+      DB.clearAllRecords();
+      Utils.toast('已清零所有积分和分享', 'success');
+      navigate(currentMod);
     });
   }
 
