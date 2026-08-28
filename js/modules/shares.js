@@ -158,8 +158,8 @@
     imageInput.addEventListener('change', (e) => {
       const file = e.target.files[0];
       if (!file) return;
-      if (file.size > 5 * 1024 * 1024) {
-        Utils.toast('图片不能超过5MB', 'error');
+      if (file.size > 20 * 1024 * 1024) {
+        Utils.toast('图片不能超过20MB', 'error');
         return;
       }
       // 压缩图片
@@ -168,12 +168,12 @@
         const img = new Image();
         img.onload = () => {
           const canvas = document.createElement('canvas');
-          const maxW = 800;
+          const maxW = 1280;
           let w = img.width, h = img.height;
           if (w > maxW) { h = Math.round(h * maxW / w); w = maxW; }
           canvas.width = w; canvas.height = h;
           canvas.getContext('2d').drawImage(img, 0, 0, w, h);
-          imageBase64 = canvas.toDataURL('image/jpeg', 0.7);
+          imageBase64 = canvas.toDataURL('image/jpeg', 0.85);
           imagePreview.innerHTML = '';
           imagePreview.appendChild(Utils.el('div', {
             style: { position: 'relative', display: 'inline-block' },
