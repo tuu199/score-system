@@ -2,26 +2,26 @@
   "_meta": {
     "app": "score-system",
     "version": 1,
-    "exported_at": "2026-08-28 14:31:48"
+    "exported_at": "2026-08-28 14:32:13"
   },
   "groups": [
     {
       "id": 1,
       "name": "胡楚睿组",
       "leader_name": "胡楚睿",
-      "created_at": "2026-08-28 12:03:13"
+      "created_at": "2026-08-28 12:23:40"
     },
     {
       "id": 2,
       "name": "李明轩组",
       "leader_name": "李明轩",
-      "created_at": "2026-08-28 12:03:13"
+      "created_at": "2026-08-28 12:23:40"
     },
     {
       "id": 3,
       "name": "王思涵组",
       "leader_name": "王思涵",
-      "created_at": "2026-08-28 12:03:13"
+      "created_at": "2026-08-28 12:23:40"
     },
     {
       "id": 4,
@@ -33,21 +33,33 @@
   "members": [
     {
       "id": 1,
-      "name": "涂佳豪",
-      "group_id": 4,
-      "created_at": "2026-08-28 12:48:35"
+      "name": "李子铭",
+      "group_id": 1,
+      "created_at": "2026-08-28 12:32:11"
     },
     {
       "id": 2,
-      "name": "刘志强",
-      "group_id": 4,
-      "created_at": "2026-08-28 12:48:44"
+      "name": "高浩怡",
+      "group_id": 1,
+      "created_at": "2026-08-28 12:33:22"
     },
     {
       "id": 3,
       "name": "段尚瑶",
       "group_id": 1,
       "created_at": "2026-08-28 14:01:26"
+    },
+    {
+      "id": 4,
+      "name": "涂佳豪",
+      "group_id": 4,
+      "created_at": "2026-08-28 12:48:35"
+    },
+    {
+      "id": 5,
+      "name": "刘志强",
+      "group_id": 4,
+      "created_at": "2026-08-28 12:48:44"
     }
   ],
   "score_records": [],
