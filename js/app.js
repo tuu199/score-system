@@ -93,7 +93,7 @@
   function tryLogin(password) {
     if (DB.checkPassword(password)) {
       isAdmin = true;
-      sessionStorage.setItem('score_admin', '1');
+      localStorage.setItem('score_admin', '1');
       hideLoginModal();
       updateModeIndicator();
       renderNav();
@@ -109,7 +109,7 @@
   }
   function logout() {
     isAdmin = false;
-    sessionStorage.removeItem('score_admin');
+    localStorage.removeItem('score_admin');
     updateModeIndicator();
     renderNav();
     Utils.toast('已退出管理员模式', 'info');
@@ -335,7 +335,7 @@
         }
       }
       // 恢复管理员登录状态（刷新后不丢失）
-      if (sessionStorage.getItem('score_admin') === '1') {
+      if (localStorage.getItem('score_admin') === '1') {
         isAdmin = true;
       }
       setupIO();
