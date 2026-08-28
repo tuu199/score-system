@@ -84,11 +84,68 @@
 
     // 链接
     const linkInput = Utils.el('input', {
-      class: 'form-input', type: 'text', placeholder: '链接（可选，如文章/视频网址）', id: 'share-link',
+      class: 'form-input', type: 'text', placeholder: '链接（可选，图片/视频/文章网址）', id: 'share-link',
     });
     formCard.appendChild(Utils.el('div', { class: 'form-row' }, [
       Utils.el('label', {}, ['链接']),
       linkInput,
+    ]));
+
+    // 图片上传
+    let imageBase64 = '';
+    const imageInput = Utils.el('input', {
+      type: 'file', accept: 'image/*', id: 'share-image',
+      style: { display: 'none' },
+    });
+    const imageBtn = Utils.el('button', {
+      type: 'button', class: 'btn btn-ghost',
+      style: { marginTop: '8px' },
+    }, ['📷 添加图片（可选）']);
+    const imagePreview = Utils.el('div', { id: 'image-preview', style: { marginTop: '8px' } });
+
+    imageBtn.addEventListener('click', () => imageInput.click());
+    imageInput.addEventListener('change', (e) => {
+      const file = e.target.files[0];
+      if (!file) return;
+      if (file.size > 5 * 1024 * 1024) {
+        Utils.toast('图片不能超过5MB', 'error');
+        return;
+      }
+      // 压缩图片
+      const reader = new FileReader();
+      reader.onload = (ev) => {
+        const img = new Image();
+        img.onload = () => {
+          const canvas = document.createElement('canvas');
+          const maxW = 800;
+          let w = img.width, h = img.height;
+          if (w > maxW) { h = Math.round(h * maxW / w); w = maxW; }
+          canvas.width = w; canvas.height = h;
+          canvas.getContext('2d').drawImage(img, 0, 0, w, h);
+          imageBase64 = canvas.toDataURL('image/jpeg', 0.7);
+          imagePreview.innerHTML = '';
+          imagePreview.appendChild(Utils.el('div', {
+            style: { position: 'relative', display: 'inline-block' },
+          }, [
+            Utils.el('img', {
+              src: imageBase64,
+              style: { maxWidth: '200px', maxHeight: '150px', borderRadius: '8px', border: '1px solid #ddd' },
+            }),
+            Utils.el('button', {
+              type: 'button',
+              style: { position: 'absolute', top: '-5px', right: '-5px', background: '#ef4444', color: '#fff', border: 'none', borderRadius: '50%', width: '22px', height: '22px', cursor: 'pointer', fontSize: '14px', lineHeight: '1' },
+              onclick: () => { imageBase64 = ''; imagePreview.innerHTML = ''; imageInput.value = ''; },
+            }, ['×']),
+          ]));
+          Utils.toast('图片已添加', 'success');
+        };
+        img.src = ev.target.result;
+      };
+      reader.readAsDataURL(file);
+    });
+    formCard.appendChild(Utils.el('div', { class: 'form-row' }, [
+      Utils.el('label', {}, ['图片']),
+      imageBtn, imageInput, imagePreview,
     ]));
 
     // 提交按钮
@@ -103,17 +160,20 @@
       const content = contentTextarea.value.trim();
       const link = linkInput.value.trim();
       if (!gid) { Utils.toast('请选择小组', 'error'); return; }
-      if (!content) { Utils.toast('请填写分享内容', 'error'); return; }
+      if (!content && !imageBase64) { Utils.toast('请填写分享内容或添加图片', 'error'); return; }
       try {
         DB.addShare({
           member_id: mid, group_id: gid, title, content, link,
-          week: currentWeek,
+          image_data: imageBase64, week: currentWeek,
         });
         Utils.toast('分享成功！个人积分 +1', 'success');
         // 清空表单
         titleInput.value = '';
         contentTextarea.value = '';
         linkInput.value = '';
+        imageBase64 = '';
+        imagePreview.innerHTML = '';
+        imageInput.value = '';
         // 刷新列表
         ScoreApp.navigate('shares');
       } catch (e) {
@@ -163,13 +223,44 @@
           card.appendChild(Utils.el('div', { class: 'share-title' }, [s.title]));
         }
         // 内容
-        card.appendChild(Utils.el('div', { class: 'share-content' }, [s.content]));
-        // 链接
+        if (s.content) {
+          card.appendChild(Utils.el('div', { class: 'share-content' }, [s.content]));
+        }
+        // 图片（base64 或链接是图片网址）
+        if (s.image_data) {
+          card.appendChild(Utils.el('img', {
+            src: s.image_data,
+            class: 'share-image',
+            style: { maxWidth: '100%', borderRadius: '8px', marginTop: '8px' },
+          }));
+        } else if (s.link && /\.(jpg|jpeg|png|gif|webp)(\?|$)/i.test(s.link)) {
+          // 链接是图片网址，内嵌显示
+          card.appendChild(Utils.el('img', {
+            src: s.link,
+            class: 'share-image',
+            style: { maxWidth: '100%', borderRadius: '8px', marginTop: '8px' },
+          }));
+        }
+        // 视频链接
         if (s.link) {
-          const linkEl = Utils.el('a', {
-            class: 'share-link', href: s.link, target: '_blank', rel: 'noopener',
-          }, ['🔗 ' + s.link]);
-          card.appendChild(linkEl);
+          // B站视频嵌入
+          const biliMatch = s.link.match(/bilibili\.com\/video\/(BV[\w]+)/i);
+          if (biliMatch) {
+            const iframe = Utils.el('iframe', {
+              src: '//player.bilibili.com/player.html?bvid=' + biliMatch[1] + '&high_quality=1',
+              class: 'share-video',
+              style: { width: '100%', height: '200px', border: 'none', borderRadius: '8px', marginTop: '8px' },
+              allowfullscreen: 'true',
+              scrolling: 'no',
+            });
+            card.appendChild(iframe);
+          } else if (!/\.(jpg|jpeg|png|gif|webp)(\?|$)/i.test(s.link)) {
+            // 普通链接
+            const linkEl = Utils.el('a', {
+              class: 'share-link', href: s.link, target: '_blank', rel: 'noopener',
+            }, ['🔗 ' + s.link]);
+            card.appendChild(linkEl);
+          }
         }
         // 底部：周次 + 删除按钮（管理员可删）
         const footer = Utils.el('div', { class: 'share-footer' }, [

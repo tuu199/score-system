@@ -68,6 +68,7 @@
       title       TEXT,
       content     TEXT NOT NULL,
       link        TEXT,
+      image_data  TEXT,
       week        TEXT,
       created_at  TEXT NOT NULL,
       FOREIGN KEY (group_id) REFERENCES groups(id) ON DELETE CASCADE,
@@ -291,12 +292,12 @@
                  ORDER BY s.created_at DESC, s.id DESC`;
     return _queryAll(sql, params);
   }
-  function addShare({ member_id, group_id, title, content, link, week }) {
+  function addShare({ member_id, group_id, title, content, link, image_data, week }) {
     return _mutate(() => {
       _exec(
-        `INSERT INTO shares (member_id, group_id, title, content, link, week, created_at)
-         VALUES (?,?,?,?,?,?,?)`,
-        [member_id || null, group_id, title || '', content, link || '', week || '',
+        `INSERT INTO shares (member_id, group_id, title, content, link, image_data, week, created_at)
+         VALUES (?,?,?,?,?,?,?,?)`,
+        [member_id || null, group_id, title || '', content, link || '', image_data || '', week || '',
          Utils.formatDate()]
       );
       // 自动加 1 分（群分享，category=3）
@@ -451,7 +452,7 @@
                                individual_points, group_points, week, created_at, recorded_by
                                FROM score_records ORDER BY id`);
     const settings = _queryAll('SELECT key, value FROM settings');
-    const shares = _queryAll('SELECT id, member_id, group_id, title, content, link, week, created_at FROM shares ORDER BY id');
+    const shares = _queryAll('SELECT id, member_id, group_id, title, content, link, image_data, week, created_at FROM shares ORDER BY id');
     return {
       _meta: { app: 'score-system', version: 1, exported_at: Utils.formatDate() },
       groups, members, score_records: records, shares, settings,
@@ -489,8 +490,8 @@
         _exec('INSERT OR REPLACE INTO settings (key, value) VALUES (?,?)', [s.key, s.value]);
       });
       (data.shares || []).forEach(s => {
-        _exec('INSERT INTO shares (id, member_id, group_id, title, content, link, week, created_at) VALUES (?,?,?,?,?,?,?,?)',
-          [s.id, s.member_id, s.group_id, s.title, s.content, s.link, s.week, s.created_at]);
+        _exec('INSERT INTO shares (id, member_id, group_id, title, content, link, image_data, week, created_at) VALUES (?,?,?,?,?,?,?,?)',
+          [s.id, s.member_id, s.group_id, s.title, s.content, s.link, s.image_data || '', s.week, s.created_at]);
       });
       // 重置自增序列，避免下次插入冲突
       try {
@@ -586,8 +587,8 @@
         );
         if (exist.length === 0) {
           _exec(
-            'INSERT INTO shares (member_id, group_id, title, content, link, week, created_at) VALUES (?,?,?,?,?,?,?)',
-            [localMemberId, localGroupId, s.title, s.content, s.link, s.week, s.created_at]
+            'INSERT INTO shares (member_id, group_id, title, content, link, image_data, week, created_at) VALUES (?,?,?,?,?,?,?,?)',
+            [localMemberId, localGroupId, s.title, s.content, s.link, s.image_data || '', s.week, s.created_at]
           );
           added++;
         }
