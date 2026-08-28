@@ -559,14 +559,14 @@
         }
       });
 
-      // 3. 合并积分记录（按 成员+类别+周次+描述 去重）
+      // 3. 合并积分记录（按 成员+小组+类别+周次+描述+分数 去重，IS 处理 NULL）
       (data.score_records || []).forEach(r => {
         const localMemberId = memberIdMap[r.member_id] || r.member_id;
         const localGroupId = groupIdMap[r.group_id] || r.group_id;
-        // 查本地是否已有相同记录
+        // 查本地是否已有相同记录（用 IS 做 NULL 安全比较）
         const exist = _queryAll(
-          `SELECT id FROM score_records WHERE member_id = ? AND group_id = ? AND category = ? AND description = ? AND week = ?`,
-          [localMemberId, localGroupId, r.category, r.description, r.week]
+          `SELECT id FROM score_records WHERE member_id IS ? AND group_id = ? AND category = ? AND description IS ? AND week = ? AND individual_points = ? AND group_points = ?`,
+          [localMemberId, localGroupId, r.category, r.description, r.week, r.individual_points, r.group_points]
         );
         if (exist.length === 0) {
           // 新记录，用新ID插入
