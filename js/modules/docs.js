@@ -104,7 +104,18 @@
           }
           Utils.toast('文件上传成功（如 Word 预览空白：切「新窗口打开」下载即可）', 'success');
         } catch (err) {
-          Utils.toast('上传失败：' + (err.message || String(err)) + '。超过 49MB 或复杂 Word 请发网盘再贴链接。', 'error');
+          const msg = (err && err.message) ? String(err.message) : String(err);
+          let hint = '';
+          if (/Invalid key|key|invalid/i.test(msg)) {
+            hint = '（已自动修复中文文件名问题，刷新后重试；若仍失败请发网盘再贴链接）';
+          } else if (/size|too large|超过|MB/i.test(msg)) {
+            hint = '（文件超过 49MB，请发飞书/网盘后贴链接）';
+          } else if (/network|fetch|offline|timeout/i.test(msg)) {
+            hint = '（网络不稳定，重试或换 WiFi 再试）';
+          } else {
+            hint = '（复杂 Word/Excel 建议先转 PDF，或发网盘贴链接绕过）';
+          }
+          Utils.toast('上传失败：' + msg + ' ' + hint, 'error');
         }
         fileBtn.textContent = '📎 上传文件';
         fileBtn.disabled = false;

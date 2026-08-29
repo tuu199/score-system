@@ -810,6 +810,67 @@ test('[Archive-3] 今天 2026-08-29 调 archiveLastMonthMediaShares，归档目�
   assert.strictEqual(aug.archived, 0, '8 月不能被归档');
 });
 
+// ---------- Bugfix: 文件名中文/特殊字符导致 Supabase Storage Invalid key（3 条 TDD）----------
+// Supabase Storage 对象 Key 不能有中文字符、空格、#、?、\ 等，否则直接返回 400 Invalid key。
+// 这里对「生成上传 fileName」的函数做纯逻辑断言（算法与 db.js 的 _sanitizeFilenameBase/_buildSafeStorageKey 完全一致）
+function sanitizeFilenameBase(rawNameNoExt) {
+  let s = String(rawNameNoExt || '').replace(
+    /[\s\\/: #?*"<>|,\u0000-\u001f\u3000-\u303f\uff00-\uffef\u4e00-\u9fff\u3400-\u4dbf]/g,
+    '_'
+  );
+  s = s.replace(/[^A-Za-z0-9_.-]/g, '_');
+  s = s.replace(/_{2,}/g, '_').replace(/^_+|_+$/g, '');
+  return s || 'file';
+}
+function buildSafeFileName(fileName, prefixHint, ts, rand) {
+  // prefixHint: 'shares' | 'docs'（与 db.js _buildSafeStorageKey 参数相同）
+  const raw = String(fileName || 'file');
+  let prefix = prefixHint === 'shares' ? 'share_' : 'doc_';
+  let rest = raw;
+  const pm = /^(share|doc)_/.exec(rest);
+  if (pm) {
+    prefix = pm[1] + '_';
+    rest = rest.slice(pm[0].length);
+  }
+  let base = rest;
+  let ext = '';
+  const dot = rest.lastIndexOf('.');
+  if (dot > 0 && dot < rest.length - 1) {
+    base = rest.slice(0, dot);
+    ext = rest.slice(dot + 1);
+  } else if (dot === -1) {
+    ext = 'bin';
+  } else {
+    ext = 'bin';
+  }
+  const safeBase = sanitizeFilenameBase(base);
+  const safeExt = String(ext || 'bin').toLowerCase().replace(/[^a-z0-9]/g, '') || 'bin';
+  return prefix + String(ts) + '_' + safeBase + '_' + String(rand) + '.' + safeExt;
+}
+
+test('[Filename-1] 中文写作大纲.docx → 不包含任何中文/S3 非法字符，首尾正确', () => {
+  const out = buildSafeFileName('写作大纲.docx', 'docs', '1787984173896', '16no0q');
+  // 中文全被替换，主名变成空 → 兜底 file
+  assert.strictEqual(out, 'doc_1787984173896_file_16no0q.docx', '中文必须全部过滤，兜底成 file，实际：' + out);
+  assert.strictEqual(/[\u4e00-\u9fff]/.test(out), false, '绝不能包含汉字');
+  assert.strictEqual(/[\s:#?*"<>|\\/]/.test(out), false, 'S3 非法字符不可出现');
+  assert.strictEqual(/_{2,}/.test(out), false, '不允许连续下划线');
+});
+
+test('[Filename-2] share_【精选】培训 视频.MP4 → share_ 前缀保留，中文/空格/【】全替换，扩展名转小写 mp4', () => {
+  const out = buildSafeFileName('share_【精选】培训 视频.MP4', 'shares', '1000001', 'abcdef');
+  assert.ok(/^share_1000001_.*_abcdef\.mp4$/.test(out), '实际：' + out);
+  assert.strictEqual(/[\u4e00-\u9fff\s【】\u3000-\u303f\uff00-\uffef]/.test(out), false, '中文/全角标点必须被替换：' + out);
+});
+
+test('[Filename-3] my,report+v2..final 2026.docx → 逗号/加号/空格换成 _，双点保留；扩展名仍为 docx', () => {
+  const out = buildSafeFileName('my,report+v2..final 2026.docx', 'docs', '999', 'r123');
+  assert.strictEqual(/[,+\s]/.test(out), false, '逗号/加号/空格必须被替换：' + out);
+  assert.ok(out.startsWith('doc_999_'), '前缀 + 时间戳错：' + out);
+  assert.ok(out.endsWith('_r123.docx'), '随机 + 扩展名错：' + out);
+  assert.strictEqual(/_{2,}/.test(out), false, '不允许连续下划线（已合并）：' + out);
+});
+
 // ---------- 汇总 ----------
 console.log(`\n=== 结果: ${passed} 通过, ${failed} 失败 ===\n`);
 process.exit(failed > 0 ? 1 : 0);

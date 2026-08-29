@@ -685,14 +685,64 @@
    * bucket 路由：
    *  - 文件名以 share_ 开头 → 'shares' bucket
    *  - 其它                 → 'docs' bucket（原文档默认）
+   *
+   *  ⚠️ Supabase Storage（S3 兼容）对象 Key 不允许中文字符 / 空格 / # ? 等，
+   *     中文文件名会直接报 400 Invalid key，必须先生成「安全化 fileName」再上传。
    */
+  /** S3/Supabase 文件名主名安全化：中文、空格、#?*: 等全部换成 _，合并连续 _，去掉首尾 _ */
+  function _sanitizeFilenameBase(rawNameNoExt) {
+    // 第一遍：中文（CJK 统一表意 + 扩展 A + 全角标点 + 兼容字符）、空格、路径符号、#?* 等 → _
+    let s = String(rawNameNoExt || '').replace(
+      /[\s\\/: #?*"<>|,\u0000-\u001f\u3000-\u303f\uff00-\uffef\u4e00-\u9fff\u3400-\u4dbf]/g,
+      '_'
+    );
+    // 第二遍：只保留字母、数字、_、.、-，其余 → _
+    s = s.replace(/[^A-Za-z0-9_.-]/g, '_');
+    // 合并连续下划线 & 去首尾 _
+    s = s.replace(/_{2,}/g, '_').replace(/^_+|_+$/g, '');
+    return s || 'file';
+  }
+  /**
+   * 生成 Supabase Storage 安全的上传对象 Key：
+   *   {doc_|share_}{timestamp}_{safeBase}_{random}.{lowerExt}
+   * - 拆分扩展名严格按「最后一个 .」分割，避免 my.file.docx 被误分
+   * - 前缀：文件原本带 share_ → share_；doc_ 或无前缀 → 按 bucket 给 doc_/share_
+   */
+  function _buildSafeStorageKey(fileName, bucketHint, tsMs, rand) {
+    const raw = String(fileName || 'file');
+    // 1) 剥离前缀 (share_|doc_) —— 后面要重建
+    let prefix = bucketHint === 'shares' ? 'share_' : 'doc_';
+    let rest = raw;
+    const pm = /^(share|doc)_/.exec(rest);
+    if (pm) {
+      prefix = pm[1] + '_';
+      rest = rest.slice(pm[0].length);
+    }
+    // 2) 按「最后一个点」拆扩展名
+    let base = rest;
+    let ext = '';
+    const dot = rest.lastIndexOf('.');
+    if (dot > 0 && dot < rest.length - 1) {
+      base = rest.slice(0, dot);
+      ext = rest.slice(dot + 1);
+    } else if (dot === -1) {
+      // 没有点：用一个兜底扩展名
+      ext = 'bin';
+    } else {
+      // dot === 0：开头是点（隐藏文件），兜底
+      ext = 'bin';
+    }
+    const safeBase = _sanitizeFilenameBase(base);
+    // 扩展名转小写，去除任何非字母数字字符
+    const safeExt = String(ext || 'bin').toLowerCase().replace(/[^a-z0-9]/g, '') || 'bin';
+    return `${prefix}${tsMs}_${safeBase}_${rand}.${safeExt}`;
+  }
   async function uploadFile(file, base64DataUrl) {
     if (!file || !file.name) throw new Error('缺少文件名，无法上传');
-    const ext = (file.name.split('.').pop() || 'bin').toLowerCase();
     const bucket = /^share_/.test(file.name) ? 'shares' : 'docs';
-    const random = Math.random().toString(36).slice(2, 8);
-    const fileName = file.name.replace(/^((share|doc)_)?/, (_m, p) => (p || 'doc_') + Date.now() + '_')
-      .replace(/\.[^.]*$/, '') + '_' + random + '.' + ext;
+    const ts = Date.now();
+    const rand = Math.random().toString(36).slice(2, 8);
+    const fileName = _buildSafeStorageKey(file.name, bucket, ts, rand);
 
     // --- 扩展名 -> MIME 映射（解决 Word/Excel 上传失败：老浏览器/老 Office 文件 type 为空或错误） ---
     const EXT_MIME = {

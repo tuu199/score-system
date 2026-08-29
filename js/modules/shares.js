@@ -369,7 +369,13 @@
             finalVideoData = vurl;
           } catch (ve) {
             console.error('[SHARES] 视频上传失败：', ve.message || ve);
-            Utils.toast('视频上传失败：' + (ve.message || ve) + '（可稍后重试或压缩视频大小后再传）', 'error');
+            const vm = (ve && ve.message) ? String(ve.message) : String(ve);
+            let vh = '';
+            if (/Invalid key|invalid|key/i.test(vm)) vh = '（已自动修复中文文件名问题，刷新再试；仍失败请发 B 站/网盘贴链接）';
+            else if (/size|too large|超过|MB/i.test(vm)) vh = '（视频超过 49MB；请压缩或上传 B 站/网盘，再粘贴分享链接）';
+            else if (/network|fetch|offline|timeout/i.test(vm)) vh = '（网络不稳，请稍后重试或换 WiFi）';
+            else vh = '（超过 49MB 或格式无法识别？可直接粘贴 B 站/网盘视频链接到链接框绕过）';
+            Utils.toast('视频上传失败：' + vm + ' ' + vh, 'error');
             _submitting = false;
             submitBtn.disabled = false;
             submitBtn.textContent = originalBtnText;
