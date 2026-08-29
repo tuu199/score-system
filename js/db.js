@@ -562,7 +562,7 @@
     // M-2：如果 image_data 指向本 Supabase Storage 的 shares/docs bucket，异步清掉原文件
     if (share && share.image_data && typeof share.image_data === 'string' && supabase && supabase.storage) {
       try {
-        const mDoc = String(share.image_data).match(/\/storage\\/v1\\/object\\/public\\/(docs|shares)\\/([^?#]+)/);
+        const mDoc = String(share.image_data).match(/\/storage\/v1\/object\/public\/(docs|shares)\/([^?#]+)/);
         if (mDoc && mDoc[1] && mDoc[2]) {
           const bucket = mDoc[1];
           const fileName = decodeURIComponent(mDoc[2]);
@@ -599,7 +599,7 @@
     if (doc && doc.link && supabase && supabase.storage) {
       try {
         const urlStr = String(doc.link);
-        const m = urlStr.match(/\/storage\\/v1\\/object\\/public\\/docs\\/([^?#]+)/);
+        const m = urlStr.match(/\/storage\/v1\/object\/public\/docs\/([^?#]+)/);
         if (m && m[1]) {
           const fileName = decodeURIComponent(m[1]);
           supabase.storage.from('docs').remove([fileName]).catch(err =>

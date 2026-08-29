@@ -44,7 +44,7 @@
       const allow = protocols.some(p => low.startsWith(p));
       if (!allow) return null;
       // 禁止 javascript:/vbscript:/data:text/html 等
-      if (/^\\s*javascript\\s*:/i.test(s) || /^\\s*vbscript\\s*:/i.test(s) ||
+      if (/^\s*javascript\s*:/i.test(s) || /^\s*vbscript\s*:/i.test(s) ||
           low.startsWith('data:text/html') || low.startsWith('data:text/')) return null;
       return s;
     },
@@ -54,7 +54,7 @@
       if (!url) return false;
       try {
         const u = new URL(String(url));
-        return /(^|\\.)(bilibili\\.com|b23\\.tv)$/.test(u.hostname);
+        return /(^|\.)(bilibili\.com|b23\.tv)$/.test(u.hostname);
       } catch (_) { return false; }
     },
 

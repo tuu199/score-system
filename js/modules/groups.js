@@ -58,7 +58,7 @@
           Utils.el('tbody', {}, rows),
         ]),
       ]),
-    ])]));
+    ]));
 
     // 挂事件（新增按钮 + 每行按钮）
     const card = view.querySelector('.card');
