@@ -111,26 +111,108 @@
           contentEl.textContent = s.content;
           card.appendChild(contentEl);
         }
-        // H-3：图片走 sanitizeUrl 白名单协议
+        // H-3：图片走 sanitizeUrl 白名单协议；点击放大（Lightbox，支持 ←/→ 切图）
+        function appendImage(card, src, options = {}) {
+          if (!src) return;
+          const safeSrc = Utils.sanitizeUrl(src, { allowImageData: true });
+          if (!safeSrc) return;
+          const img = Utils.el('img', {
+            src: safeSrc,
+            class: 'share-image',
+            style: Object.assign({
+              maxWidth: '100%', borderRadius: '8px', marginTop: '8px', display: 'block', cursor: 'zoom-in',
+            }, options.style || {}),
+            loading: 'lazy', referrerpolicy: 'no-referrer',
+            title: '点击查看大图（支持 ← / → 切换同页图片）',
+            'data-lightbox-group': 'gallery-list',
+            'data-lightbox-src': safeSrc,
+          });
+          img.addEventListener('click', (e) => {
+            e.preventDefault();
+            Utils.openLightbox(safeSrc, { groupId: 'gallery-list', alt: options.alt || '' });
+          });
+          card.appendChild(img);
+        }
+        function isImageLink(u) { return u && /^https?:\/\//i.test(u) && /\.(jpg|jpeg|png|gif|webp)(\?|#|$)/i.test(u); }
+        function isVideoLink(u) { return u && /^https?:\/\//i.test(u) && /\.(mp4|m4v|webm|ogg|ogv|mov|3gp|avi|mkv|ts)(\?|#|$)/i.test(u); }
+
         if (s.image_data) {
-          const safeSrc = Utils.sanitizeUrl(s.image_data, { allowImageData: true });
-          if (safeSrc) {
-            card.appendChild(Utils.el('img', {
-              src: safeSrc,
-              class: 'share-image',
-              style: { maxWidth: '100%', borderRadius: '8px', marginTop: '8px', display: 'block' },
-              loading: 'lazy', referrerpolicy: 'no-referrer',
-            }));
-          }
-        } else if (s.link && /^https?:\/\//i.test(s.link) && /\.(jpg|jpeg|png|gif|webp)(\?|#|$)/i.test(s.link)) {
-          const safeSrc = Utils.sanitizeUrl(s.link, { allowImageData: false });
-          if (safeSrc) {
-            card.appendChild(Utils.el('img', {
-              src: safeSrc,
-              class: 'share-image',
-              style: { maxWidth: '100%', borderRadius: '8px', marginTop: '8px', display: 'block' },
-              loading: 'lazy', referrerpolicy: 'no-referrer',
-            }));
+          appendImage(card, s.image_data);
+        } else if (s.link && isImageLink(s.link)) {
+          appendImage(card, s.link);
+        }
+        // ===== 视频卡片（分享广场新增：点击即播放 / 全屏 / 新窗口打开） =====
+        if (s.video_data || isVideoLink(s.link)) {
+          const vsrc = Utils.sanitizeUrl(s.video_data || s.link, { allowVideoData: true, allowImageData: true });
+          if (vsrc) {
+            const ext1 = (s.video_data ? s.video_data : s.link).split('.').pop().split(/[?#]/)[0].toLowerCase();
+            const isBrowserNative = /^(mp4|m4v|webm|ogg|ogv|mov)$/.test(ext1);
+            const vWrap = Utils.el('div', {
+              style: {
+                marginTop: '8px', borderRadius: '8px', overflow: 'hidden',
+                background: '#0f172a', border: '1px solid #1e293b',
+              },
+            });
+            const vBar = Utils.el('div', {
+              style: {
+                display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                gap: '8px', padding: '6px 10px', color: '#e2e8f0',
+                fontSize: '12px', background: '#1e293b', flexWrap: 'wrap',
+              },
+            });
+            const badge = Utils.el('span', { style: { color: '#fef08a', fontWeight: 600 } });
+            badge.textContent = (s.video_data ? '🎥 上传视频' : '🎬 视频链接') + ' · ' + ext1.toUpperCase();
+            const btns = Utils.el('div', { style: { display: 'flex', gap: '6px', alignItems: 'center' } });
+            const fsBtn = Utils.el('button', {
+              type: 'button', class: 'btn btn-ghost btn-sm',
+              style: { padding: '2px 8px', fontSize: '12px', color: '#f1f5f9', background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.12)' },
+            });
+            fsBtn.textContent = '⛶ 全屏播放';
+            const openBtn = Utils.el('a', {
+              href: vsrc, target: '_blank', rel: 'noopener noreferrer',
+              class: 'btn btn-ghost btn-sm',
+              style: { padding: '2px 8px', fontSize: '12px', textDecoration: 'none', color: '#f1f5f9', background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.12)' },
+            });
+            openBtn.textContent = '🔗 新窗口打开';
+            btns.appendChild(fsBtn);
+            btns.appendChild(openBtn);
+            if (!isBrowserNative) {
+              const warn = Utils.el('span', { style: { color: '#fca5a5' } });
+              warn.textContent = '此格式浏览器可能不支持直接播放，建议「新窗口打开」下载后观看';
+              btns.appendChild(warn);
+            }
+            vBar.appendChild(badge);
+            vBar.appendChild(btns);
+            vWrap.appendChild(vBar);
+            if (isBrowserNative) {
+              const vid = Utils.el('video', {
+                src: vsrc, controls: '', preload: 'metadata', playsinline: 'true',
+                style: { width: '100%', maxHeight: '480px', display: 'block', background: '#000' },
+              });
+              fsBtn.addEventListener('click', () => {
+                try {
+                  if (vid.requestFullscreen) vid.requestFullscreen();
+                  else if (vid.webkitEnterFullscreen) vid.webkitEnterFullscreen();
+                  else if (vid.webkitRequestFullscreen) vid.webkitRequestFullscreen();
+                  else vid.play().catch(() => {});
+                } catch (_e) { Utils.toast('当前浏览器不支持全屏，已切换普通播放', 'warning'); vid.play().catch(() => {}); }
+              });
+              vWrap.appendChild(vid);
+            } else {
+              const fallback = Utils.el('a', {
+                href: vsrc, target: '_blank', rel: 'noopener noreferrer',
+                style: {
+                  display: 'block', padding: '28px 14px', textAlign: 'center', color: '#e2e8f0',
+                  textDecoration: 'none', background: 'linear-gradient(180deg,#334155,#0f172a)',
+                },
+              }, [
+                Utils.el('div', { style: { fontSize: '40px' } }, ['📼']),
+                Utils.el('div', { style: { marginTop: '4px', fontWeight: 600 } }, ['点击新窗口打开 / 下载后播放']),
+                Utils.el('div', { style: { marginTop: '4px', fontSize: '12px', color: '#94a3b8' } }, ['链接：' + vsrc]),
+              ]);
+              vWrap.appendChild(fallback);
+            }
+            card.appendChild(vWrap);
           }
         }
         // 视频链接 / 普通链接
@@ -150,8 +232,9 @@
               }));
             }
           }
-          const isImage = /\.(jpg|jpeg|png|gif|webp)(\?|#|$)/i.test(s.link);
-          if (!isImage) {
+          const isImage = isImageLink(s.link);
+          const isVideo = isVideoLink(s.link);
+          if (!isImage && !isVideo) {
             if (safeLink && /^https?:\/\//i.test(safeLink)) {
               const a = Utils.el('a', {
                 class: 'share-link', href: safeLink, target: '_blank', rel: 'noopener noreferrer',

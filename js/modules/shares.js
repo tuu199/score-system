@@ -207,6 +207,89 @@
       imageBtn, imageInput, imagePreview,
     ]));
 
+    // ===== 视频上传（新增：专门的视频上传渠道） =====
+    let videoData = '';          // 最终存储到 DB.video_data 的 URL
+    const videoInput = Utils.el('input', {
+      type: 'file', id: 'share-video',
+      accept: 'video/mp4,video/webm,video/ogg,video/x-matroska,video/quicktime,video/x-msvideo,.mp4,.m4v,.webm,.ogg,.ogv,.mov,.3gp,.avi,.mkv,.ts',
+      style: { display: 'none' },
+    });
+    const videoBtn = Utils.el('button', {
+      type: 'button', class: 'btn btn-ghost',
+      style: { marginTop: '8px' },
+    }, ['🎥 添加视频（可选，≤150MB）']);
+    const videoPreview = Utils.el('div', { id: 'video-preview', style: { marginTop: '8px' } });
+    const formatBytes = (n) => {
+      if (n < 1024) return n + ' B';
+      if (n < 1024 * 1024) return Math.round(n / 1024) + ' KB';
+      if (n < 1024 * 1024 * 1024) return (n / 1024 / 1024).toFixed(1) + ' MB';
+      return (n / 1024 / 1024 / 1024).toFixed(2) + ' GB';
+    };
+    const VIDEO_MAX = 150 * 1024 * 1024;
+
+    function clearVideo() {
+      videoData = '';
+      videoInput.value = '';
+      videoPreview.innerHTML = '';
+    }
+    videoBtn.addEventListener('click', () => videoInput.click());
+    videoInput.addEventListener('change', (e) => {
+      const file = e.target.files && e.target.files[0];
+      if (!file) return;
+      if (file.size > VIDEO_MAX) {
+        Utils.toast('视频大小不能超过 150MB，当前：' + formatBytes(file.size), 'error');
+        videoInput.value = '';
+        return;
+      }
+      const ext = (file.name.split('.').pop() || '').toLowerCase();
+      if (!['mp4', 'm4v', 'webm', 'ogg', 'ogv', 'mov', '3gp', 'avi', 'mkv', 'ts'].includes(ext)) {
+        Utils.toast('暂不支持的视频格式，请上传 .mp4 / .webm / .mov / .mkv 等常见格式', 'error');
+        videoInput.value = '';
+        return;
+      }
+      if (!file.type || !file.type.startsWith('video/')) {
+        // 老浏览器 / 特殊容器 type 为空，给出 warning 但允许继续
+        Utils.toast('检测到浏览器未识别此视频文件类型，仍会尝试上传', 'warning');
+      }
+      videoPreview.innerHTML = '';
+      const previewUrl = URL.createObjectURL(file);
+      const vidEl = Utils.el('video', {
+        controls: '', preload: 'metadata',
+        style: { maxWidth: '100%', maxHeight: '180px', borderRadius: '8px', background: '#000' },
+      });
+      vidEl.src = previewUrl;
+
+      const metaRow = Utils.el('div', { style: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '6px', marginTop: '4px' } });
+      const infoSpan = Utils.el('span', { style: { color: 'var(--text-soft)', fontSize: '12px' } });
+      infoSpan.textContent = '📁 ' + file.name + ' · ' + formatBytes(file.size) + ' · 上传到云端后可直接点击播放';
+      const uploadTag = Utils.el('span', { style: { fontSize: '12px', color: '#92400e', background: '#fef3c7', padding: '2px 6px', borderRadius: '6px' } });
+      uploadTag.textContent = '待上传（发布时自动上传到 Storage）';
+      const removeBtn = Utils.el('button', {
+        type: 'button',
+        style: { padding: '2px 10px', fontSize: '12px' },
+        class: 'btn btn-danger btn-sm',
+      });
+      removeBtn.textContent = '移除视频';
+      removeBtn.addEventListener('click', () => {
+        URL.revokeObjectURL(previewUrl);
+        clearVideo();
+      });
+      metaRow.appendChild(infoSpan);
+      metaRow.appendChild(uploadTag);
+      metaRow.appendChild(removeBtn);
+
+      videoPreview.appendChild(vidEl);
+      videoPreview.appendChild(metaRow);
+      // 临时保存 file 对象到 input 上，提交时用
+      videoInput.__file = file;
+      Utils.toast('视频已选入待发布，大小 ' + formatBytes(file.size) + '（发布时自动上传，失败会明确提示）', 'success');
+    });
+    formCard.appendChild(Utils.el('div', { class: 'form-row' }, [
+      Utils.el('label', {}, ['视频']),
+      videoBtn, videoInput, videoPreview,
+    ]));
+    // ===========================================================
+
     // 匿名发布选项
     const anonCheckbox = Utils.el('input', { type: 'checkbox', id: 'share-anon', style: { marginRight: '6px' } });
     const anonLabel = Utils.el('label', { style: { display: 'flex', alignItems: 'center', cursor: 'pointer' } }, [anonCheckbox, Utils.el('span', {}, ['🕶️ 匿名发布（不显示姓名，不加分）'])]);
@@ -236,7 +319,9 @@
       const isAnon = anonCheckbox.checked;
       if (!gid) { Utils.toast('请选择小组', 'error'); return; }
       if (!isAnon && !mid) { Utils.toast('请选择成员或勾选匿名', 'error'); return; }
-      if (!content && !imageData) { Utils.toast('请填写分享内容或添加图片', 'error'); return; }
+      if (!content && !imageData && !videoInput.__file && !link) {
+        Utils.toast('请填写分享内容、添加图片/视频，或粘贴链接', 'error'); return;
+      }
 
       // H-3：提交前先校验链接是白名单协议，拒绝 javascript 等
       if (link) {
@@ -263,9 +348,32 @@
           }
         }
 
+        // ========== 视频上传：走 shares bucket，失败明确提示，不降级（视频不能塞 base64） ==========
+        let finalVideoData = videoData;
+        if (videoInput.__file && typeof DB.uploadFile === 'function') {
+          submitBtn.textContent = '视频上传中…（大文件可能需要更久）';
+          // 命名加前缀 share_vid_ 以便和图片 share_ 区分
+          const ext = (videoInput.__file.name.split('.').pop() || 'mp4').toLowerCase();
+          const fakeFile = Object.assign(new Blob([], { type: videoInput.__file.type || 'video/mp4' }), {
+            name: 'share_vid_' + Date.now() + '_' + Math.floor(Math.random() * 1e6) + '.' + ext,
+          });
+          try {
+            const vurl = await DB.uploadFile(videoInput.__file);
+            if (!vurl) throw new Error('上传返回空链接');
+            finalVideoData = vurl;
+          } catch (ve) {
+            console.error('[SHARES] 视频上传失败：', ve.message || ve);
+            Utils.toast('视频上传失败：' + (ve.message || ve) + '（可稍后重试或压缩视频大小后再传）', 'error');
+            _submitting = false;
+            submitBtn.disabled = false;
+            submitBtn.textContent = originalBtnText;
+            return;
+          }
+        }
+
         const result = await DB.addShare({
           member_id: isAnon ? null : mid, group_id: gid, title, content, link,
-          image_data: finalImageData, week: currentWeek,
+          image_data: finalImageData, video_data: finalVideoData, week: currentWeek,
         });
         if (isAnon) {
           Utils.toast('匿名分享成功！', 'success');
@@ -283,6 +391,11 @@
         imageData = ''; imagePreviewSrc = '';
         imagePreview.innerHTML = '';
         imageInput.value = '';
+        // 清视频
+        videoPreview.querySelectorAll('video').forEach(v => { try { if (v.src) URL.revokeObjectURL(v.src); } catch (_) { /* ignore */ } });
+        videoInput.value = '';
+        videoInput.__file = null;
+        videoPreview.innerHTML = '';
         anonCheckbox.checked = false;
         // 刷新列表
         renderList();
@@ -352,25 +465,110 @@
           card.appendChild(contentEl);
         }
         // H-3：图片统一走 sanitizeUrl；只允许 http/https/data:image/blob
+        function appendImage(card, src, options = {}) {
+          if (!src) return;
+          const safeSrc = Utils.sanitizeUrl(src, { allowImageData: true });
+          if (!safeSrc) return;
+          const img = Utils.el('img', {
+            src: safeSrc,
+            class: 'share-image',
+            style: Object.assign({ maxWidth: '100%', borderRadius: '8px', marginTop: '8px', display: 'block', cursor: 'zoom-in' }, (options.style || {})),
+            loading: 'lazy', referrerpolicy: 'no-referrer',
+            'data-lightbox-group': 'shares-list',
+            'data-lightbox-src': safeSrc,
+            title: '点击查看大图（支持 ← / → 切换同页图片）',
+          });
+          img.addEventListener('click', (e) => {
+            e.preventDefault();
+            Utils.openLightbox(safeSrc, { groupId: 'shares-list', alt: options.alt || '' });
+          });
+          card.appendChild(img);
+        }
+        function isImageLink(u) { return u && /^https?:\/\//i.test(u) && /\.(jpg|jpeg|png|gif|webp)(\?|#|$)/i.test(u); }
+        function isVideoLink(u) { return u && /^https?:\/\//i.test(u) && /\.(mp4|m4v|webm|ogg|ogv|mov|3gp|avi|mkv|ts)(\?|#|$)/i.test(u); }
+
         if (s.image_data) {
-          const safeSrc = Utils.sanitizeUrl(s.image_data, { allowImageData: true });
-          if (safeSrc) {
-            card.appendChild(Utils.el('img', {
-              src: safeSrc,
-              class: 'share-image',
-              style: { maxWidth: '100%', borderRadius: '8px', marginTop: '8px' },
-              loading: 'lazy', referrerpolicy: 'no-referrer',
-            }));
-          }
-        } else if (s.link && /^https?:\/\//i.test(s.link) && /\.(jpg|jpeg|png|gif|webp)(\?|#|$)/i.test(s.link)) {
-          const safeSrc = Utils.sanitizeUrl(s.link, { allowImageData: false });
-          if (safeSrc) {
-            card.appendChild(Utils.el('img', {
-              src: safeSrc,
-              class: 'share-image',
-              style: { maxWidth: '100%', borderRadius: '8px', marginTop: '8px' },
-              loading: 'lazy', referrerpolicy: 'no-referrer',
-            }));
+          appendImage(card, s.image_data);
+        } else if (isImageLink(s.link)) {
+          appendImage(card, s.link);
+        }
+        // ===== 视频卡片：专门上传的 video_data 或链接中识别出的 .mp4/.webm 等，点击即可直接播放 / 全屏 =====
+        if (s.video_data || isVideoLink(s.link)) {
+          const vsrc = Utils.sanitizeUrl(s.video_data || s.link, { allowVideoData: true, allowImageData: true });
+          if (vsrc) {
+            const ext1 = (s.video_data ? s.video_data : s.link).split('.').pop().split(/[?#]/)[0].toLowerCase();
+            const isBrowserNative = /^(mp4|m4v|webm|ogg|ogv|mov)$/.test(ext1);
+            const vWrap = Utils.el('div', {
+              style: {
+                marginTop: '8px', borderRadius: '8px', overflow: 'hidden',
+                background: '#0f172a', border: '1px solid #1e293b',
+              },
+            });
+            const vBar = Utils.el('div', {
+              style: {
+                display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                gap: '8px', padding: '6px 10px', color: '#e2e8f0',
+                fontSize: '12px', background: '#1e293b', flexWrap: 'wrap',
+              },
+            });
+            const badge = Utils.el('span', { style: { color: '#fef08a', fontWeight: 600 } });
+            badge.textContent = (s.video_data ? '🎥 上传视频' : '🎬 视频链接') + ' · ' + ext1.toUpperCase();
+            const btns = Utils.el('div', { style: { display: 'flex', gap: '6px' } });
+            const fsBtn = Utils.el('button', {
+              type: 'button', class: 'btn btn-ghost btn-sm',
+              style: { padding: '2px 8px', fontSize: '12px', color: '#f1f5f9', background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.12)' },
+            });
+            fsBtn.textContent = '⛶ 全屏播放';
+            const openBtn = Utils.el('a', {
+              href: vsrc, target: '_blank', rel: 'noopener noreferrer',
+              class: 'btn btn-ghost btn-sm',
+              style: { padding: '2px 8px', fontSize: '12px', textDecoration: 'none', color: '#f1f5f9', background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.12)' },
+            });
+            openBtn.textContent = '🔗 新窗口打开';
+            btns.appendChild(fsBtn);
+            if (!isBrowserNative) {
+              // 非原生支持（.mkv / .avi / .ts 等）：浏览器不保证能播，给个更明显的提示 + 默认不展示视频元素
+              const warn = Utils.el('span', { style: { color: '#fca5a5' } });
+              warn.textContent = '此格式浏览器可能不支持直接播放，建议点右侧「新窗口打开」下载后观看';
+              btns.appendChild(warn);
+            }
+            vBar.appendChild(badge);
+            vBar.appendChild(btns);
+            vWrap.appendChild(vBar);
+
+            if (isBrowserNative) {
+              const vid = Utils.el('video', {
+                src: vsrc,
+                controls: '',
+                preload: 'metadata',
+                playsinline: 'true',
+                style: { width: '100%', maxHeight: '460px', display: 'block', background: '#000' },
+              });
+              fsBtn.addEventListener('click', () => {
+                try {
+                  if (vid.requestFullscreen) vid.requestFullscreen();
+                  else if (vid.webkitEnterFullscreen) vid.webkitEnterFullscreen();
+                  else if (vid.webkitRequestFullscreen) vid.webkitRequestFullscreen();
+                  else vid.play().catch(() => {});
+                } catch (_e) { Utils.toast('当前浏览器不支持全屏，已切换到普通播放', 'warning'); vid.play().catch(() => {}); }
+              });
+              vWrap.appendChild(vid);
+            } else {
+              // 兜底：一个显眼的「点击下载后播放」卡片
+              const fallback = Utils.el('a', {
+                href: vsrc, target: '_blank', rel: 'noopener noreferrer',
+                style: {
+                  display: 'block', padding: '28px 14px', textAlign: 'center', color: '#e2e8f0',
+                  textDecoration: 'none', background: 'linear-gradient(180deg,#334155,#0f172a)',
+                },
+              }, [
+                Utils.el('div', { style: { fontSize: '40px' } }, ['📼']),
+                Utils.el('div', { style: { marginTop: '4px', fontWeight: 600 } }, ['点击在新窗口打开 / 下载后播放']),
+                Utils.el('div', { style: { marginTop: '4px', fontSize: '12px', color: '#94a3b8' } }, ['链接：' + vsrc]),
+              ]);
+              vWrap.appendChild(fallback);
+            }
+            card.appendChild(vWrap);
           }
         }
         // 视频/链接
@@ -392,8 +590,10 @@
               card.appendChild(iframe);
             }
           }
-          // 非图片后缀：http/https 走 a；其它协议降级为纯文本
-          if (!/\.(jpg|jpeg|png|gif|webp)(\?|#|$)/i.test(s.link)) {
+          // 非图片 / 非视频 后缀：http/https 走 a；其它协议降级为纯文本
+          const isImg = isImageLink(s.link);
+          const isVid = isVideoLink(s.link);
+          if (!isImg && !isVid) {
             if (safeLink && /^https?:\/\//i.test(safeLink)) {
               const a = Utils.el('a', {
                 class: 'share-link', href: safeLink, target: '_blank',

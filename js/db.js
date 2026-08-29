@@ -469,7 +469,7 @@
    * 新增分享（M-1：获取 per-member+week 锁后再计算上限，避免并发突破 WEEKLY_SHARE_CAP=4）
    * 返回 Promise<{shareId, pointsAwarded, reachedCap, weeklyCap}>，resolve 时分享和自动积分的真实 id 都已确定
    */
-  function addShare({ member_id, group_id, title, content, link, image_data, week, is_announcement }) {
+  function addShare({ member_id, group_id, title, content, link, image_data, video_data, week, is_announcement }) {
     // M-1 原子锁（per member_id + week）
     const lock = _acquireShareLock(is_announcement ? null : member_id, week);
     // 先等前一个锁释放完成，再做检查 + 插入
@@ -482,6 +482,7 @@
         content,
         link: link || '',
         image_data: image_data || '',
+        video_data: video_data || '',
         week: week || '',
         created_at: now,
         is_announcement: is_announcement ? 1 : 0,
@@ -559,19 +560,22 @@
       );
       toDelete.forEach(r => _delete('score_records', r.id));
     }
-    // M-2：如果 image_data 指向本 Supabase Storage 的 shares/docs bucket，异步清掉原文件
-    if (share && share.image_data && typeof share.image_data === 'string' && supabase && supabase.storage) {
+    // M-2：如果 image_data / video_data 指向本 Supabase Storage 的 shares/docs bucket，异步清掉原文件
+    const _cleanStorageUrl = (url) => {
+      if (!url || typeof url !== 'string' || !supabase || !supabase.storage) return;
       try {
-        const mDoc = String(share.image_data).match(/\/storage\/v1\/object\/public\/(docs|shares)\/([^?#]+)/);
-        if (mDoc && mDoc[1] && mDoc[2]) {
-          const bucket = mDoc[1];
-          const fileName = decodeURIComponent(mDoc[2]);
+        const m = String(url).match(/\/storage\/v1\/object\/public\/(docs|shares)\/([^?#]+)/);
+        if (m && m[1] && m[2]) {
+          const bucket = m[1];
+          const fileName = decodeURIComponent(m[2]);
           supabase.storage.from(bucket).remove([fileName]).catch(err =>
             console.warn('[DB] M-2 storage 清理失败（share / ' + bucket + '）：', err.message || err)
           );
         }
-      } catch (e) { /* 清理失败不阻塞主流程 */ }
-    }
+      } catch (_e) { /* 清理失败不阻塞主流程 */ }
+    };
+    _cleanStorageUrl(share && share.image_data);
+    _cleanStorageUrl(share && share.video_data);
     return Promise.resolve(true);
   }
 
@@ -663,6 +667,16 @@
       gif: 'image/gif',
       webp: 'image/webp',
       svg: 'image/svg+xml',
+      mp4: 'video/mp4',
+      m4v: 'video/x-m4v',
+      mov: 'video/quicktime',
+      webm: 'video/webm',
+      ogg: 'video/ogg',
+      ogv: 'video/ogg',
+      '3gp': 'video/3gpp',
+      avi: 'video/x-msvideo',
+      mkv: 'video/x-matroska',
+      ts: 'video/mp2t',
     };
     const overrideMime = EXT_MIME[ext] || null;
 
@@ -864,7 +878,7 @@
       })),
       shares: _cache.shares.map(s => ({
         id: s.id, member_id: s.member_id, group_id: s.group_id, title: s.title,
-        content: s.content, link: s.link, image_data: s.image_data, week: s.week,
+        content: s.content, link: s.link, image_data: s.image_data, video_data: s.video_data || '', week: s.week,
         created_at: s.created_at, is_announcement: s.is_announcement,
       })),
       settings: Object.entries(_cache.settings).map(([key, value]) => ({ key, value })),
@@ -960,7 +974,7 @@
     // search
     searchRecords,
     // shares
-    listShares, addShare, deleteShare,
+    listShares, addShare, deleteShare, uploadFile,
     // docs
     listDocs, addDoc, deleteDoc, uploadFile,
     // statistics & ranking

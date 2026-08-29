@@ -33,13 +33,17 @@
     },
 
     /** H-3：安全 URL 校验（白名单协议 + B站域名白名单）。返回 null 表示不安全；否则返回原样（可加 rel=noopener noreferrer） */
-    sanitizeUrl(url, { allowImageData = true } = {}) {
+    sanitizeUrl(url, { allowImageData = false, allowVideoData = false, allowAnyData = false } = {}) {
       if (url == null) return null;
       const s = String(url).trim();
       if (!s) return null;
       // 协议白名单
       const protocols = ['http://', 'https://', 'mailto:', 'tel:', 'blob:'];
-      if (allowImageData) protocols.push('data:image/');
+      if (allowAnyData) protocols.push('data:');
+      else {
+        if (allowImageData) protocols.push('data:image/');
+        if (allowVideoData) protocols.push('data:video/');
+      }
       const low = s.toLowerCase();
       const allow = protocols.some(p => low.startsWith(p));
       if (!allow) return null;
@@ -129,6 +133,148 @@
         tr.appendChild(td);
       }
       return tr;
+    },
+
+    /**
+     * 图片 Lightbox（浮层大图）：点击图片打开大图，支持 Esc 关闭、点击遮罩关闭、左右方向键浏览同组图片。
+     * 用法：对 <img> 调用 Utils.openLightbox(src)，或把一组图片元素绑定到同一 galleryId。
+     * 返回 true 表示已打开。
+     */
+    openLightbox(src, { groupId = null, alt = '' } = {}) {
+      if (!src || typeof document === 'undefined') return false;
+      const safeSrc = Utils.sanitizeUrl(src, { allowImageData: true });
+      if (!safeSrc) return false;
+      // 构造图集：有 groupId 的话，取当前页面所有 data-lightbox-group="xxx" 的 img 作为图集
+      const images = [];
+      if (groupId) {
+        const all = document.querySelectorAll('img[data-lightbox-group="' + Utils.escapeAttr(String(groupId)).replace(/^"|"$/g, '') + '"]');
+        all.forEach(img => {
+          const s = img.getAttribute('data-lightbox-src') || img.src;
+          const safe = Utils.sanitizeUrl(s, { allowImageData: true });
+          if (safe) images.push(safe);
+        });
+      }
+      if (images.length === 0) images.push(safeSrc);
+      let idx = Math.max(0, images.indexOf(safeSrc));
+
+      // 单例：避免叠加多个 lightbox
+      const old = document.getElementById('__utils_lightbox');
+      if (old) old.remove();
+
+      const mask = Utils.el('div', {
+        id: '__utils_lightbox',
+        role: 'dialog', 'aria-modal': 'true', 'aria-label': '图片预览',
+        style: {
+          position: 'fixed', inset: 0, zIndex: 99999,
+          background: 'rgba(0,0,0,0.85)',
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+          padding: '20px', cursor: 'zoom-out',
+        },
+      });
+      const toolbar = Utils.el('div', {
+        style: {
+          position: 'absolute', top: '12px', right: '16px',
+          display: 'flex', gap: '8px', alignItems: 'center', color: '#fff', fontSize: '13px',
+        },
+      });
+      const counter = Utils.el('span', { id: '__lb_counter', style: { marginRight: '12px' } });
+      const dlBtn = Utils.el('a', {
+        href: safeSrc, download: '', target: '_blank', rel: 'noopener noreferrer',
+        style: {
+          color: '#fff', padding: '4px 10px', background: 'rgba(255,255,255,0.12)',
+          borderRadius: '6px', textDecoration: 'none', cursor: 'pointer',
+        },
+      }, ['⬇️ 原图']);
+      const closeBtn = Utils.el('button', {
+        type: 'button',
+        style: {
+          color: '#fff', background: 'rgba(255,255,255,0.12)', border: 'none',
+          padding: '4px 12px', borderRadius: '6px', cursor: 'pointer', fontSize: '14px',
+        },
+      }, ['✕ 关闭']);
+      toolbar.appendChild(counter);
+      toolbar.appendChild(dlBtn);
+      toolbar.appendChild(closeBtn);
+
+      const imgWrap = Utils.el('div', { style: { maxWidth: '100%', maxHeight: '100%', position: 'relative' } });
+      const img = Utils.el('img', {
+        src: safeSrc,
+        alt: Utils.escapeAttr(alt),
+        loading: 'lazy',
+        style: { maxWidth: '100%', maxHeight: 'calc(100vh - 80px)', borderRadius: '6px', objectFit: 'contain', boxShadow: '0 8px 40px rgba(0,0,0,0.6)', background: '#111' },
+      });
+      imgWrap.appendChild(img);
+
+      const prevBtn = Utils.el('button', {
+        type: 'button', title: '上一张 (←)',
+        style: {
+          position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)',
+          color: '#fff', background: 'rgba(0,0,0,0.45)', border: 'none', width: '44px', height: '44px',
+          borderRadius: '50%', fontSize: '20px', cursor: 'pointer', display: images.length > 1 ? 'block' : 'none',
+        },
+      }, ['‹']);
+      const nextBtn = Utils.el('button', {
+        type: 'button', title: '下一张 (→)',
+        style: {
+          position: 'absolute', right: '12px', top: '50%', transform: 'translateY(-50%)',
+          color: '#fff', background: 'rgba(0,0,0,0.45)', border: 'none', width: '44px', height: '44px',
+          borderRadius: '50%', fontSize: '20px', cursor: 'pointer', display: images.length > 1 ? 'block' : 'none',
+        },
+      }, ['›']);
+
+      mask.appendChild(toolbar);
+      mask.appendChild(imgWrap);
+      mask.appendChild(prevBtn);
+      mask.appendChild(nextBtn);
+
+      function close() { mask.remove(); document.removeEventListener('keydown', onKey); }
+      function show(i) {
+        idx = (i + images.length) % images.length;
+        img.src = images[idx];
+        dlBtn.href = images[idx];
+        const name = (images[idx].split('/').pop() || '').split('?')[0];
+        try { dlBtn.setAttribute('download', decodeURIComponent(name)); } catch (_) { /* ignore */ }
+        counter.textContent = images.length > 1 ? (idx + 1) + ' / ' + images.length : '';
+      }
+      function onKey(e) {
+        if (e.key === 'Escape') close();
+        else if (images.length > 1 && e.key === 'ArrowLeft') show(idx - 1);
+        else if (images.length > 1 && e.key === 'ArrowRight') show(idx + 1);
+      }
+      mask.addEventListener('click', (e) => { if (e.target === mask) close(); });
+      closeBtn.addEventListener('click', close);
+      prevBtn.addEventListener('click', () => show(idx - 1));
+      nextBtn.addEventListener('click', () => show(idx + 1));
+      document.addEventListener('keydown', onKey);
+
+      show(idx);
+      document.body.appendChild(mask);
+      return true;
+    },
+
+    /** 便捷：把一组 <img> 元素（或 CSS 选择器匹配的 img）全部绑定点击打开 Lightbox（支持 ←/→ 切换） */
+    bindLightbox(selectorOrEls, { groupId = 'default' } = {}) {
+      let els;
+      if (typeof selectorOrEls === 'string') {
+        els = Array.from(document.querySelectorAll(selectorOrEls));
+      } else if (selectorOrEls && typeof selectorOrEls.length === 'number') {
+        els = Array.from(selectorOrEls);
+      } else if (selectorOrEls) {
+        els = [selectorOrEls];
+      } else return;
+      const gid = String(groupId);
+      els.forEach((img) => {
+        if (!(img && img.tagName === 'IMG')) return;
+        img.setAttribute('data-lightbox-group', gid);
+        if (!img.style.cursor || img.style.cursor === 'auto' || img.style.cursor === '') img.style.cursor = 'zoom-in';
+        if (img.getAttribute('data-lightbox-bound') === '1') return;
+        img.setAttribute('data-lightbox-bound', '1');
+        img.addEventListener('click', (e) => {
+          e.preventDefault();
+          const src = img.getAttribute('data-lightbox-src') || img.src;
+          Utils.openLightbox(src, { groupId: gid, alt: img.alt || '' });
+        });
+      });
     },
   };
 
