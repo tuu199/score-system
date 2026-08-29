@@ -60,13 +60,14 @@
 
     // ========== 小组统计表 + 单小组详情切换 ==========
     const groups = DB.listGroups();
-    let currentGroupId = groups[0] ? groups[0].id : null;
+    // 默认选中「总览（所有小组）」，避免选到没有数据的小组导致用户看不到图表
+    let currentGroupId = null;
 
-    // 小组选择器
+    // 小组选择器：默认 value='' 对应「总览」
     const groupSelector = Utils.el('select', { class: 'form-input', style: { width: 'auto', marginTop: '10px' } });
-    groupSelector.appendChild(Utils.el('option', { value: '' }, ['📊 总览（所有小组）']));
+    groupSelector.appendChild(Utils.el('option', { value: '', selected: 'selected' }, ['📊 总览（所有小组）']));
     groups.forEach(g => {
-      groupSelector.appendChild(Utils.el('option', { value: String(g.id), selected: String(g.id) === String(currentGroupId) }, ['👥 ' + g.name]));
+      groupSelector.appendChild(Utils.el('option', { value: String(g.id) }, ['👥 ' + g.name]));
     });
 
     // 统计详情容器（总览 / 单小组切换）
