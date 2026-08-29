@@ -83,9 +83,27 @@
   }
 
   /** ========== 管理员登录 ========== */
+  // H-2：登录失败计数 + 冷却期（只在内存有效，刷新会重置，但 3 次/分钟 已能阻止手工暴力破解）
+  const LOGIN_COOLDOWN_MS = 60 * 1000; // 1 分钟
+  const MAX_FAIL = 3;
+  let _loginFails = 0;
+  let _loginCoolUntil = 0;
+  // H-2：首次使用默认密码 (admin123) 登录后，5 分钟内必须改密，否则自动登出
+  let _forceChangePasswordDeadline = 0;
+  let _forceChangeTimer = null;
+
   function showLoginModal() {
     const modal = document.getElementById('login-modal');
     if (!modal) return;
+    // H-2：展示剩余冷却时间
+    const coolLeft = Math.max(0, _loginCoolUntil - Date.now());
+    const hint = document.getElementById('login-hint') || document.createElement('p');
+    hint.id = 'login-hint';
+    hint.style.cssText = 'color:var(--danger);font-size:12px;margin-top:6px;min-height:16px;';
+    modal.querySelector('.modal-body').appendChild(hint);
+    if (coolLeft > 0) {
+      hint.textContent = '⚠️ 密码错误次数过多，请等待 ' + Math.ceil(coolLeft / 1000) + ' 秒后再试';
+    }
     modal.classList.remove('hidden');
     const input = document.getElementById('login-pwd');
     input.value = '';
@@ -95,26 +113,105 @@
     const modal = document.getElementById('login-modal');
     if (modal) modal.classList.add('hidden');
   }
+
+  /** H-2：弹出修改默认密码的模态，要求用户输入新密码完成后才能继续操作 */
+  function _promptChangeDefaultPassword() {
+    const overlay = Utils.el('div', { class: 'modal', style: { zIndex: '9999' } });
+    const pwd1 = Utils.el('input', {
+      class: 'login-input', type: 'password', placeholder: '请输入新密码（至少 6 位）', autocomplete: 'new-password',
+    });
+    const pwd2 = Utils.el('input', {
+      class: 'login-input', type: 'password', placeholder: '请再次输入新密码', autocomplete: 'new-password',
+    });
+    const hint = Utils.el('p', { style: { color: 'var(--danger)', fontSize: '12px', marginTop: '6px', minHeight: '16px' } }, []);
+    const submit = Utils.el('button', { class: 'btn btn-primary' }, ['设置新密码']);
+    overlay.appendChild(Utils.el('div', { class: 'modal-content', style: { maxWidth: '420px' } }, [
+      Utils.el('div', { class: 'modal-header' }, [Utils.el('h2', {}, ['🔐 必须修改默认管理员密码'])]),
+      Utils.el('div', { class: 'modal-body' }, [
+        Utils.el('p', { style: { color: 'var(--text-soft)', fontSize: '13px', marginBottom: '10px' } },
+          ['出于安全考虑，首次使用默认密码「admin123」后，请立即修改为专属密码。',
+            Utils.el('br', {}),
+            '5 分钟内未完成将自动退出管理员。']),
+        Utils.el('div', { class: 'form-group', style: { marginBottom: '10px' } }, [Utils.el('label', {}, ['新密码']), pwd1]),
+        Utils.el('div', { class: 'form-group', style: { marginBottom: '10px' } }, [Utils.el('label', {}, ['确认密码']), pwd2]),
+        hint,
+        Utils.el('div', { class: 'form-actions' }, [submit]),
+      ]),
+    ]));
+    document.body.appendChild(overlay);
+    setTimeout(() => pwd1.focus(), 80);
+
+    function doChange() {
+      const a = pwd1.value.trim(), b = pwd2.value.trim();
+      if (a.length < 6) { hint.textContent = '密码至少 6 位'; return; }
+      if (a === 'admin123') { hint.textContent = '新密码不能和默认密码相同'; return; }
+      if (a !== b) { hint.textContent = '两次输入的密码不一致'; return; }
+      DB.setPassword(a);
+      DB.setSetting('admin_password_changed', '1');
+      Utils.toast('管理员密码已更新，请妥善保管', 'success');
+      _forceChangePasswordDeadline = 0;
+      if (_forceChangeTimer) { clearTimeout(_forceChangeTimer); _forceChangeTimer = null; }
+      document.body.removeChild(overlay);
+    }
+    submit.addEventListener('click', doChange);
+    pwd1.addEventListener('keydown', e => { if (e.key === 'Enter') doChange(); });
+    pwd2.addEventListener('keydown', e => { if (e.key === 'Enter') doChange(); });
+  }
+
   function tryLogin(password) {
+    // H-2：冷却期内即使输入正确密码也拒绝
+    const now = Date.now();
+    if (_loginCoolUntil && now < _loginCoolUntil) {
+      Utils.toast(`密码错误次数过多，请 ${Math.ceil((_loginCoolUntil - now) / 1000)} 秒后再试`, 'error');
+      return false;
+    }
+    if (!password) { Utils.toast('请输入密码', 'error'); return false; }
     if (DB.checkPassword(password)) {
       isAdmin = true;
+      _loginFails = 0;
       localStorage.setItem('score_admin', '1');
       hideLoginModal();
       updateModeIndicator();
       renderNav();
       Utils.toast('管理员登录成功', 'success');
-      // 如果当前在 adminOnly 模块之外，跳转到积分录入
+
+      // H-2：如果仍使用默认密码 admin123，提示立刻改密 + 5 分钟后强制登出
+      const stillDefault = DB.getPassword() === 'admin123';
+      const alreadyChanged = DB.getSetting('admin_password_changed', '') === '1';
+      if (stillDefault && !alreadyChanged) {
+        Utils.toast('⚠️ 检测到仍使用默认密码 admin123，请立即修改', 'warning');
+        _forceChangePasswordDeadline = Date.now() + 5 * 60 * 1000;
+        if (_forceChangeTimer) clearTimeout(_forceChangeTimer);
+        _forceChangeTimer = setTimeout(() => {
+          if (!isAdmin) return;
+          Utils.toast('超过 5 分钟未改默认密码，已自动退出', 'error');
+          logout();
+        }, 5 * 60 * 1000);
+        setTimeout(_promptChangeDefaultPassword, 500);
+      }
+
       const mod = findModule(currentModuleId);
       if (!mod || (mod.adminOnly && !isAdmin)) navigate('record');
-      else navigate(currentModuleId); // 重新 mount 以显示编辑控件
+      else navigate(currentModuleId);
       return true;
     }
-    Utils.toast('密码错误', 'error');
+    _loginFails += 1;
+    if (_loginFails >= MAX_FAIL) {
+      _loginCoolUntil = Date.now() + LOGIN_COOLDOWN_MS;
+      Utils.toast(`密码错误 ${_loginFails} 次，已限制登录 ${LOGIN_COOLDOWN_MS / 1000} 秒`, 'error');
+      // 同步更新登录弹窗提示
+      const hint = document.getElementById('login-hint');
+      if (hint) hint.textContent = '⚠️ 连续错误过多，请等待 ' + (LOGIN_COOLDOWN_MS / 1000) + ' 秒后再尝试';
+    } else {
+      Utils.toast(`密码错误（还可尝试 ${MAX_FAIL - _loginFails} 次）`, 'error');
+    }
     return false;
   }
   function logout() {
     isAdmin = false;
     localStorage.removeItem('score_admin');
+    if (_forceChangeTimer) { clearTimeout(_forceChangeTimer); _forceChangeTimer = null; }
+    _forceChangePasswordDeadline = 0;
     updateModeIndicator();
     renderNav();
     Utils.toast('已退出管理员模式', 'info');

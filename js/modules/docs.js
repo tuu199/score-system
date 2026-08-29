@@ -81,17 +81,18 @@
         fileBtn.textContent = '⏳ 上传中…';
         fileBtn.disabled = true;
         try {
-          const result = await DB.uploadFile(file);
-          linkInput.value = result.url;
-          uploadedFileName = result.name;
-          fileNameLabel.textContent = '✅ ' + result.name;
+          const publicUrl = await DB.uploadFile(file);
+          if (!publicUrl) throw new Error('未返回公开链接');
+          linkInput.value = publicUrl;
+          uploadedFileName = file.name;
+          fileNameLabel.textContent = '✅ ' + file.name;
           if (!titleInput.value.trim()) {
-            const baseName = result.name.replace(/\.[^.]+$/, '');
+            const baseName = file.name.replace(/\.[^.]+$/, '');
             titleInput.value = baseName;
           }
           Utils.toast('文件上传成功', 'success');
         } catch (err) {
-          Utils.toast('上传失败：' + err.message, 'error');
+          Utils.toast('上传失败：' + (err.message || String(err)), 'error');
         }
         fileBtn.textContent = '📎 上传文件';
         fileBtn.disabled = false;
@@ -109,20 +110,28 @@
         class: 'btn btn-primary',
         style: { marginTop: '10px', width: '100%' },
       }, ['📝 发布文档']);
-      submitBtn.addEventListener('click', () => {
+      let _submitting = false;
+      submitBtn.addEventListener('click', async () => {
         const title = titleInput.value.trim();
         const link = linkInput.value.trim();
         if (!title) { Utils.toast('请填写文档标题', 'error'); return; }
         if (!link) { Utils.toast('请填写文档链接', 'error'); return; }
+        if (_submitting) return;
+        _submitting = true; submitBtn.disabled = true;
+        const orig = submitBtn.textContent;
+        submitBtn.textContent = '保存中…';
         try {
-          DB.addDoc({
+          await DB.addDoc({
             title, content: contentInput.value.trim(), link,
             category: categorySelect.value, is_pinned: pinCheckbox.checked,
           });
           Utils.toast('文档已发布', 'success');
           titleInput.value = ''; contentInput.value = ''; linkInput.value = ''; pinCheckbox.checked = false;
-          ScoreApp.navigate('docs');
-        } catch (e) { Utils.toast('发布失败：' + e.message, 'error'); }
+          renderList();
+        } catch (e) {
+          Utils.toast('发布失败：' + e.message, 'error');
+          _submitting = false; submitBtn.disabled = false; submitBtn.textContent = orig;
+        }
       });
       formCard.appendChild(submitBtn);
       view.appendChild(formCard);
@@ -166,90 +175,108 @@
             : { marginBottom: '12px', padding: '12px', borderRadius: '8px', border: '1px solid var(--border)' },
         });
 
-        // 头部：分类标签 + 时间
-        card.appendChild(Utils.el('div', { style: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px', fontSize: '13px' } }, [
-          Utils.el('span', { style: { background: '#3b82f6', color: '#fff', padding: '2px 8px', borderRadius: '4px', fontSize: '12px' } }, [
-            (isPinned ? '📌 ' : '') + (d.category || '其他'),
-          ]),
-          Utils.el('span', { style: { color: 'var(--text-soft)', fontSize: '12px' } }, [
-            d.created_at ? d.created_at.slice(0, 16).replace('T', ' ') : '',
-          ]),
-        ]));
+        // 头部：分类标签 + 时间（textContent 防 XSS）
+        const catSpan = Utils.el('span', { style: { background: '#3b82f6', color: '#fff', padding: '2px 8px', borderRadius: '4px', fontSize: '12px' } });
+        catSpan.textContent = (isPinned ? '📌 ' : '') + (d.category || '其他');
+        const timeSpan = Utils.el('span', { style: { color: 'var(--text-soft)', fontSize: '12px' } });
+        timeSpan.textContent = d.created_at ? d.created_at.slice(0, 16).replace('T', ' ') : '';
+        card.appendChild(Utils.el('div', { style: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px', fontSize: '13px' } }, [catSpan, timeSpan]));
 
         // 标题
-        card.appendChild(Utils.el('div', { style: { fontWeight: '700', fontSize: '16px', marginBottom: '6px' } }, [d.title || '无标题']));
+        const titleEl = Utils.el('div', { style: { fontWeight: '700', fontSize: '16px', marginBottom: '6px' } });
+        titleEl.textContent = d.title || '无标题';
+        card.appendChild(titleEl);
 
         // 描述
         if (d.content) {
-          card.appendChild(Utils.el('div', { style: { color: 'var(--text-soft)', whiteSpace: 'pre-wrap', wordBreak: 'break-word', lineHeight: '1.6', marginBottom: '8px', fontSize: '14px' } }, [d.content]));
+          const descEl = Utils.el('div', { style: { color: 'var(--text-soft)', whiteSpace: 'pre-wrap', wordBreak: 'break-word', lineHeight: '1.6', marginBottom: '8px', fontSize: '14px' } });
+          descEl.textContent = d.content;
+          card.appendChild(descEl);
         }
 
-        // 链接 + 文件预览
+        // 链接 / 预览：H-3 白名单协议
         if (d.link) {
-          const isUrl = /^https?:\/\//i.test(d.link);
-          const ext = (d.link.match(/\.(pdf|doc|docx|xls|xlsx|ppt|pptx|txt|jpg|jpeg|png|gif|webp|zip|rar)(\?|$)/i) || [])[1] || '';
-
-          if (isUrl) {
-            // 文件预览区
+          const safeLink = Utils.sanitizeUrl(d.link, { allowImageData: true });
+          const ext = safeLink ? ((safeLink.match(/\.(pdf|doc|docx|xls|xlsx|ppt|pptx|txt|jpg|jpeg|png|gif|webp|zip|rar)(\?|#|$)/i) || [])[1] || '') : '';
+          if (safeLink && /^https?:\/\//i.test(safeLink)) {
+            // PDF 内嵌预览
             if (ext === 'pdf') {
-              // PDF 内嵌预览
               card.appendChild(Utils.el('div', { style: { marginTop: '10px', borderRadius: '8px', overflow: 'hidden', border: '1px solid var(--border)' } }, [
                 Utils.el('iframe', {
-                  src: d.link, style: { width: '100%', height: '400px', border: 'none' },
+                  src: safeLink,
+                  style: { width: '100%', height: '400px', border: 'none' },
+                  referrerpolicy: 'no-referrer', sandbox: 'allow-same-origin allow-scripts allow-popups',
                 }),
               ]));
             } else if (/^(doc|docx|xls|xlsx|ppt|pptx)$/i.test(ext)) {
-              // Word/Excel/PPT 用 Office Online 预览
               card.appendChild(Utils.el('div', { style: { marginTop: '10px', borderRadius: '8px', overflow: 'hidden', border: '1px solid var(--border)' } }, [
                 Utils.el('iframe', {
-                  src: 'https://view.officeapps.live.com/op/embed.aspx?src=' + encodeURIComponent(d.link),
+                  src: 'https://view.officeapps.live.com/op/embed.aspx?src=' + encodeURIComponent(safeLink),
                   style: { width: '100%', height: '400px', border: 'none' },
+                  referrerpolicy: 'no-referrer', sandbox: 'allow-same-origin allow-scripts allow-popups allow-forms',
                 }),
               ]));
             } else if (/^(jpg|jpeg|png|gif|webp)$/i.test(ext)) {
-              // 图片预览
-              card.appendChild(Utils.el('img', {
-                src: d.link, alt: d.title || '文档图片',
+              const im = Utils.el('img', {
                 style: { maxWidth: '100%', borderRadius: '8px', marginTop: '10px', display: 'block' },
-              }));
+                loading: 'lazy', referrerpolicy: 'no-referrer',
+              });
+              im.src = safeLink;
+              im.alt = d.title || '文档图片';
+              card.appendChild(im);
             }
 
-            // 下载按钮（所有文件类型）
             const btnRow = Utils.el('div', { style: { marginTop: '10px', display: 'flex', gap: '8px', flexWrap: 'wrap' } });
-            btnRow.appendChild(Utils.el('a', {
-              href: d.link, target: '_blank', rel: 'noopener noreferrer', download: '',
+            const downloadBtn = Utils.el('a', {
+              href: safeLink, target: '_blank', rel: 'noopener noreferrer', download: '',
               class: 'btn btn-primary btn-sm',
               style: { textDecoration: 'none', display: 'inline-flex', alignItems: 'center', gap: '4px' },
-            }, ['📥 下载文件' + (ext ? '（' + ext.toUpperCase() + '）' : '')]));
+            });
+            downloadBtn.textContent = '📥 下载文件' + (ext ? '（' + ext.toUpperCase() + '）' : '');
+            btnRow.appendChild(downloadBtn);
 
-            // 打印按钮（PDF在新标签打开后可直接 Ctrl+P 打印）
             if (ext === 'pdf') {
-              btnRow.appendChild(Utils.el('button', {
-                class: 'btn btn-ghost btn-sm',
-                onclick: () => window.open(d.link, '_blank'),
-              }, ['🖨️ 打印']));
+              const printBtn = Utils.el('button', { class: 'btn btn-ghost btn-sm' });
+              printBtn.textContent = '🖨️ 打印';
+              printBtn.addEventListener('click', () => window.open(safeLink, '_blank', 'noopener,noreferrer'));
+              btnRow.appendChild(printBtn);
             }
-            // Word/Excel 提示下载后打印
             if (/^(doc|docx|xls|xlsx|ppt|pptx)$/i.test(ext)) {
-              btnRow.appendChild(Utils.el('span', { style: { fontSize: '12px', color: 'var(--text-soft)', alignSelf: 'center' } }, ['（下载后可打印）']));
+              const tip = Utils.el('span', { style: { fontSize: '12px', color: 'var(--text-soft)', alignSelf: 'center' } });
+              tip.textContent = '（下载后可打印）';
+              btnRow.appendChild(tip);
             }
             card.appendChild(btnRow);
-          } else {
-            card.appendChild(Utils.el('span', { style: { display: 'inline-block', marginTop: '8px', color: 'var(--text-soft)', wordBreak: 'break-all', fontSize: '14px' } }, ['🔗 ' + d.link]));
+          } else if (safeLink) {
+            const plain = Utils.el('span', { style: { display: 'inline-block', marginTop: '8px', color: 'var(--text-soft)', wordBreak: 'break-all', fontSize: '14px' } });
+            plain.textContent = '🔗 ' + d.link;
+            card.appendChild(plain);
+          } else if (!safeLink) {
+            const plain = Utils.el('span', { style: { display: 'inline-block', marginTop: '8px', color: 'var(--text-soft)', wordBreak: 'break-all', fontSize: '14px' } });
+            plain.textContent = '🔗 ' + d.link;
+            card.appendChild(plain);
           }
         }
 
-        // 删除按钮（管理员）
+        // 删除按钮（管理员，async + 锁）
         if (ScoreApp.isAdmin) {
           const delBtn = Utils.el('button', {
             class: 'btn btn-danger btn-sm',
             style: { marginTop: '8px', padding: '2px 10px', fontSize: '12px' },
-          }, ['🗑 删除']);
-          delBtn.addEventListener('click', () => {
+          });
+          delBtn.textContent = '🗑 删除';
+          delBtn.addEventListener('click', async () => {
             if (!Utils.confirm('确认删除这篇文档？')) return;
-            DB.deleteDoc(d.id);
-            Utils.toast('已删除', 'info');
-            renderList();
+            if (delBtn.dataset.locked) return;
+            delBtn.dataset.locked = '1'; delBtn.disabled = true;
+            try {
+              await DB.deleteDoc(d.id);
+              Utils.toast('已删除', 'info');
+              renderList();
+            } catch (e) {
+              Utils.toast('删除失败：' + e.message, 'error');
+              delBtn.disabled = false; delBtn.dataset.locked = '';
+            }
           });
           card.appendChild(delBtn);
         }

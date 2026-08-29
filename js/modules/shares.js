@@ -143,7 +143,8 @@
     ]));
 
     // 图片上传
-    let imageBase64 = '';
+    let imageData = '';        // 最终存储的 URL 或 base64（M-3 优先 storage）
+    let imagePreviewSrc = ''; // 预览图 src
     const imageInput = Utils.el('input', {
       type: 'file', accept: 'image/*', id: 'share-image',
       style: { display: 'none' },
@@ -162,33 +163,40 @@
         Utils.toast('图片不能超过20MB', 'error');
         return;
       }
-      // 压缩图片
+      // M-3：canvas 压缩到最长边 800px，JPEG 85%
       const reader = new FileReader();
       reader.onload = (ev) => {
         const img = new Image();
         img.onload = () => {
           const canvas = document.createElement('canvas');
-          const maxW = 1280;
+          const MAX = 800;
           let w = img.width, h = img.height;
-          if (w > maxW) { h = Math.round(h * maxW / w); w = maxW; }
+          if (w > h && w > MAX) { h = Math.round(h * MAX / w); w = MAX; }
+          else if (h > MAX) { w = Math.round(w * MAX / h); h = MAX; }
           canvas.width = w; canvas.height = h;
           canvas.getContext('2d').drawImage(img, 0, 0, w, h);
-          imageBase64 = canvas.toDataURL('image/jpeg', 0.85);
+          const compressedBase64 = canvas.toDataURL('image/jpeg', 0.85);
+          imagePreviewSrc = compressedBase64;
+          imageData = compressedBase64; // 先默认用 base64；提交时再尝试上传 storage
           imagePreview.innerHTML = '';
+          const safeSrc = Utils.sanitizeUrl(imagePreviewSrc, { allowImageData: true });
+          const imgPreviewEl = Utils.el('img', {
+            style: { maxWidth: '200px', maxHeight: '150px', borderRadius: '8px', border: '1px solid #ddd' },
+          });
+          if (safeSrc) imgPreviewEl.src = safeSrc;
+          const removeBtn = Utils.el('button', {
+            type: 'button',
+            style: { position: 'absolute', top: '-5px', right: '-5px', background: '#ef4444', color: '#fff', border: 'none', borderRadius: '50%', width: '22px', height: '22px', cursor: 'pointer', fontSize: '14px', lineHeight: '1' },
+          });
+          removeBtn.textContent = '×';
+          removeBtn.addEventListener('click', () => {
+            imageData = ''; imagePreviewSrc = '';
+            imagePreview.innerHTML = ''; imageInput.value = '';
+          });
           imagePreview.appendChild(Utils.el('div', {
             style: { position: 'relative', display: 'inline-block' },
-          }, [
-            Utils.el('img', {
-              src: imageBase64,
-              style: { maxWidth: '200px', maxHeight: '150px', borderRadius: '8px', border: '1px solid #ddd' },
-            }),
-            Utils.el('button', {
-              type: 'button',
-              style: { position: 'absolute', top: '-5px', right: '-5px', background: '#ef4444', color: '#fff', border: 'none', borderRadius: '50%', width: '22px', height: '22px', cursor: 'pointer', fontSize: '14px', lineHeight: '1' },
-              onclick: () => { imageBase64 = ''; imagePreview.innerHTML = ''; imageInput.value = ''; },
-            }, ['×']),
-          ]));
-          Utils.toast('图片已添加', 'success');
+          }, [imgPreviewEl, removeBtn]));
+          Utils.toast('图片已压缩至最长边 ≤800px（JPEG 85%）', 'success');
         };
         img.src = ev.target.result;
       };
@@ -216,7 +224,10 @@
       class: 'btn btn-primary',
       style: { marginTop: '10px', width: '100%' },
     }, ['📤 发布分享']);
-    submitBtn.addEventListener('click', () => {
+
+    let _submitting = false;
+    submitBtn.addEventListener('click', async () => {
+      if (_submitting) { Utils.toast('正在提交，请稍候…', 'warning'); return; }
       const gid = Number(groupSelect.value);
       const mid = Number(memberSelect.value) || null;
       const title = titleInput.value.trim();
@@ -225,13 +236,37 @@
       const isAnon = anonCheckbox.checked;
       if (!gid) { Utils.toast('请选择小组', 'error'); return; }
       if (!isAnon && !mid) { Utils.toast('请选择成员或勾选匿名', 'error'); return; }
-      if (!content && !imageBase64) { Utils.toast('请填写分享内容或添加图片', 'error'); return; }
+      if (!content && !imageData) { Utils.toast('请填写分享内容或添加图片', 'error'); return; }
+
+      // H-3：提交前先校验链接是白名单协议，拒绝 javascript 等
+      if (link) {
+        const safe = Utils.sanitizeUrl(link, { allowImageData: false });
+        if (!safe) { Utils.toast('链接协议不支持，请使用 http/https 等合规地址', 'error'); return; }
+      }
+
+      _submitting = true;
+      submitBtn.disabled = true;
+      const originalBtnText = submitBtn.textContent;
+      submitBtn.textContent = '提交中…';
       try {
-        const result = DB.addShare({
+        // M-3：如果有压缩后的 base64 图，尝试上传到 Supabase Storage（shares bucket），失败仍用 base64 降级
+        let finalImageData = imageData;
+        if (imageData && imageData.startsWith('data:image/')) {
+          const fakeFile = { name: 'share_' + Date.now() + '_' + Math.floor(Math.random() * 1e6) + '.jpg', size: 0 };
+          try {
+            if (typeof DB.uploadFile === 'function') {
+              const publicUrl = await DB.uploadFile(fakeFile, imageData);
+              if (publicUrl) finalImageData = publicUrl;
+            }
+          } catch (e) {
+            console.warn('[SHARES] M-3 storage 上传失败，降级使用 base64：', e.message || e);
+          }
+        }
+
+        const result = await DB.addShare({
           member_id: isAnon ? null : mid, group_id: gid, title, content, link,
-          image_data: imageBase64, week: currentWeek,
+          image_data: finalImageData, week: currentWeek,
         });
-        // 根据加分情况给出提示
         if (isAnon) {
           Utils.toast('匿名分享成功！', 'success');
         } else if (result.pointsAwarded > 0) {
@@ -245,14 +280,18 @@
         titleInput.value = '';
         contentTextarea.value = '';
         linkInput.value = '';
-        imageBase64 = '';
+        imageData = ''; imagePreviewSrc = '';
         imagePreview.innerHTML = '';
         imageInput.value = '';
         anonCheckbox.checked = false;
         // 刷新列表
-        ScoreApp.navigate('shares');
+        renderList();
       } catch (e) {
         Utils.toast('发布失败：' + e.message, 'error');
+      } finally {
+        _submitting = false;
+        submitBtn.disabled = false;
+        submitBtn.textContent = originalBtnText;
       }
     });
     formCard.appendChild(submitBtn);
@@ -279,9 +318,9 @@
       listContainer.innerHTML = '';
 
       if (list.length === 0) {
-        listContainer.appendChild(Utils.el('div', { class: 'card', style: { textAlign: 'center', color: 'var(--text-soft)' } }, [
-          '📭 暂无分享，快来发第一条吧！',
-        ]));
+        const empty = Utils.el('div', { class: 'card', style: { textAlign: 'center', color: 'var(--text-soft)' } });
+        empty.textContent = '📭 暂无分享，快来发第一条吧！';
+        listContainer.appendChild(empty);
         return;
       }
 
@@ -291,74 +330,114 @@
           class: 'share-card',
           style: isAnn ? { borderLeft: '4px solid #f59e0b', background: '#fffbeb' } : {},
         });
-        // 头部：姓名 + 小组 + 时间
-        card.appendChild(Utils.el('div', { class: 'share-header' }, [
-          Utils.el('span', { class: 'share-author' }, [isAnn ? '📢 管理员公告' : (s.member_name || '🕶️ 匿名同学')]),
-          Utils.el('span', { class: 'share-group' }, [isAnn ? '通知' : s.group_name]),
-          Utils.el('span', { class: 'share-time' }, [s.created_at]),
-        ]));
+        // 头部：姓名 + 小组 + 时间（全部 textContent：防 XSS）
+        const authorSpan = Utils.el('span', { class: 'share-author' });
+        authorSpan.textContent = isAnn ? '📢 管理员公告' : (s.member_name || '🕶️ 匿名同学');
+        const groupSpan = Utils.el('span', { class: 'share-group' });
+        groupSpan.textContent = isAnn ? '通知' : s.group_name;
+        const timeSpan = Utils.el('span', { class: 'share-time' });
+        timeSpan.textContent = s.created_at || '';
+        card.appendChild(Utils.el('div', { class: 'share-header' }, [authorSpan, groupSpan, timeSpan]));
+
         // 标题
         if (s.title) {
-          card.appendChild(Utils.el('div', { class: 'share-title' }, [s.title]));
+          const titleEl = Utils.el('div', { class: 'share-title' });
+          titleEl.textContent = s.title;
+          card.appendChild(titleEl);
         }
         // 内容
         if (s.content) {
-          card.appendChild(Utils.el('div', { class: 'share-content' }, [s.content]));
+          const contentEl = Utils.el('div', { class: 'share-content' });
+          contentEl.textContent = s.content;
+          card.appendChild(contentEl);
         }
-        // 图片（base64 或链接是图片网址）
+        // H-3：图片统一走 sanitizeUrl；只允许 http/https/data:image/blob
         if (s.image_data) {
-          card.appendChild(Utils.el('img', {
-            src: s.image_data,
-            class: 'share-image',
-            style: { maxWidth: '100%', borderRadius: '8px', marginTop: '8px' },
-          }));
-        } else if (s.link && /^https?:\/\//i.test(s.link) && /\.(jpg|jpeg|png|gif|webp)(\?|$)/i.test(s.link)) {
-          // 链接是图片网址，内嵌显示（仅 http/https）
-          card.appendChild(Utils.el('img', {
-            src: s.link,
-            class: 'share-image',
-            style: { maxWidth: '100%', borderRadius: '8px', marginTop: '8px' },
-          }));
+          const safeSrc = Utils.sanitizeUrl(s.image_data, { allowImageData: true });
+          if (safeSrc) {
+            card.appendChild(Utils.el('img', {
+              src: safeSrc,
+              class: 'share-image',
+              style: { maxWidth: '100%', borderRadius: '8px', marginTop: '8px' },
+              loading: 'lazy', referrerpolicy: 'no-referrer',
+            }));
+          }
+        } else if (s.link && /^https?:\/\//i.test(s.link) && /\.(jpg|jpeg|png|gif|webp)(\?|#|$)/i.test(s.link)) {
+          const safeSrc = Utils.sanitizeUrl(s.link, { allowImageData: false });
+          if (safeSrc) {
+            card.appendChild(Utils.el('img', {
+              src: safeSrc,
+              class: 'share-image',
+              style: { maxWidth: '100%', borderRadius: '8px', marginTop: '8px' },
+              loading: 'lazy', referrerpolicy: 'no-referrer',
+            }));
+          }
         }
-        // 视频链接
+        // 视频/链接
         if (s.link) {
-          // B站视频嵌入
-          const biliMatch = s.link.match(/bilibili\.com\/video\/(BV[\w]+)/i);
-          if (biliMatch) {
-            const iframe = Utils.el('iframe', {
-              src: '//player.bilibili.com/player.html?bvid=' + biliMatch[1] + '&high_quality=1',
-              class: 'share-video',
-              style: { width: '100%', height: '200px', border: 'none', borderRadius: '8px', marginTop: '8px' },
-              allowfullscreen: 'true',
-              scrolling: 'no',
-            });
-            card.appendChild(iframe);
-          } else if (!/\.(jpg|jpeg|png|gif|webp)(\?|$)/i.test(s.link)) {
-            // 普通链接（仅 http/https 可点击，防止 javascript: 等 XSS）
-            if (/^https?:\/\//i.test(s.link)) {
-              const linkEl = Utils.el('a', {
-                class: 'share-link', href: s.link, target: '_blank', rel: 'noopener noreferrer',
-              }, ['🔗 ' + s.link]);
-              card.appendChild(linkEl);
+          // B站白域名嵌入 iframe：先用 isBilibiliUrl 判域名，bvid 提取只抓字母数字
+          const safeLink = Utils.sanitizeUrl(s.link, { allowImageData: false });
+          if (safeLink && Utils.isBilibiliUrl(safeLink)) {
+            const m = s.link.match(/(BV[A-Za-z0-9]+)/);
+            if (m) {
+              const bvid = Utils.escapeAttr(m[1]);
+              const iframe = Utils.el('iframe', {
+                class: 'share-video',
+                style: { width: '100%', height: '200px', border: 'none', borderRadius: '8px', marginTop: '8px' },
+                allowfullscreen: 'true', scrolling: 'no',
+                // 必须用 player.bilibili.com，禁止拼接任意域名
+                src: 'https://player.bilibili.com/player.html?bvid=' + bvid + '&high_quality=1',
+                referrerpolicy: 'no-referrer', sandbox: 'allow-scripts allow-same-origin allow-popups allow-presentation',
+              });
+              card.appendChild(iframe);
+            }
+          }
+          // 非图片后缀：http/https 走 a；其它协议降级为纯文本
+          if (!/\.(jpg|jpeg|png|gif|webp)(\?|#|$)/i.test(s.link)) {
+            if (safeLink && /^https?:\/\//i.test(safeLink)) {
+              const a = Utils.el('a', {
+                class: 'share-link', href: safeLink, target: '_blank',
+                rel: 'noopener noreferrer', referrerpolicy: 'no-referrer',
+              });
+              a.textContent = '🔗 ' + s.link;
+              card.appendChild(a);
             } else {
-              card.appendChild(Utils.el('span', { class: 'share-link', style: { color: 'var(--text-soft)', wordBreak: 'break-all' } }, ['🔗 ' + s.link]));
+              const plain = Utils.el('span', {
+                class: 'share-link', style: { color: 'var(--text-soft)', wordBreak: 'break-all' },
+              });
+              plain.textContent = '🔗 ' + s.link;
+              card.appendChild(plain);
             }
           }
         }
         // 底部：周次 + 删除按钮（管理员可删）
-        const footer = Utils.el('div', { class: 'share-footer' }, [
-          Utils.el('span', { class: 'share-week' }, [s.week || '']),
-        ]);
+        const footer = Utils.el('div', { class: 'share-footer' });
+        // L-2：空 week 不渲染「空 span」占位，避免显示无意义标签
+        if (s.week) {
+          const weekSpan = Utils.el('span', { class: 'share-week' });
+          weekSpan.textContent = s.week;
+          footer.appendChild(weekSpan);
+        }
         if (ScoreApp.isAdmin) {
           const delBtn = Utils.el('button', {
             class: 'btn btn-danger btn-sm',
             style: { float: 'right', padding: '2px 8px', fontSize: '12px' },
-          }, ['删除']);
-          delBtn.addEventListener('click', () => {
-            if (!Utils.confirm('确认删除这条分享？')) return;
-            DB.deleteShare(s.id);
-            Utils.toast('已删除', 'info');
-            renderList();
+          });
+          delBtn.textContent = '删除';
+          delBtn.addEventListener('click', async () => {
+            if (!Utils.confirm('确认删除这条分享？删除后对应积分也将同步撤销')) return;
+            try {
+              if (delBtn.dataset.locked === '1') return;
+              delBtn.dataset.locked = '1';
+              delBtn.disabled = true;
+              await DB.deleteShare(s.id);
+              Utils.toast('已删除', 'info');
+              renderList();
+            } catch (e) {
+              Utils.toast('删除失败：' + e.message, 'error');
+              delBtn.disabled = false;
+              delBtn.dataset.locked = '';
+            }
           });
           footer.appendChild(delBtn);
         }

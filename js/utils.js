@@ -18,12 +18,44 @@
       return Math.round(Number(num) * p) / p;
     },
 
-    /** 安全转义 HTML，防止 XSS */
+    /** 安全转义 HTML，防止 XSS（H-3） */
     escapeHtml(str) {
       if (str == null) return '';
       return String(str)
         .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
         .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+    },
+
+    /** H-3：把字符串转成可安全放到 src/href/style/on* 属性里的形式（比 escapeHtml 多处理 ` 和反斜杠） */
+    escapeAttr(str) {
+      if (str == null) return '';
+      return Utils.escapeHtml(str).replace(/`/g, '&#96;').replace(/\\/g, '&#92;');
+    },
+
+    /** H-3：安全 URL 校验（白名单协议 + B站域名白名单）。返回 null 表示不安全；否则返回原样（可加 rel=noopener noreferrer） */
+    sanitizeUrl(url, { allowImageData = true } = {}) {
+      if (url == null) return null;
+      const s = String(url).trim();
+      if (!s) return null;
+      // 协议白名单
+      const protocols = ['http://', 'https://', 'mailto:', 'tel:', 'blob:'];
+      if (allowImageData) protocols.push('data:image/');
+      const low = s.toLowerCase();
+      const allow = protocols.some(p => low.startsWith(p));
+      if (!allow) return null;
+      // 禁止 javascript:/vbscript:/data:text/html 等
+      if (/^\\s*javascript\\s*:/i.test(s) || /^\\s*vbscript\\s*:/i.test(s) ||
+          low.startsWith('data:text/html') || low.startsWith('data:text/')) return null;
+      return s;
+    },
+
+    /** H-3：判断是否是 B 站可嵌入 iframe 的安全域名（白名单） */
+    isBilibiliUrl(url) {
+      if (!url) return false;
+      try {
+        const u = new URL(String(url));
+        return /(^|\\.)(bilibili\\.com|b23\\.tv)$/.test(u.hostname);
+      } catch (_) { return false; }
     },
 
     /** 创建 DOM 元素的快捷函数 */

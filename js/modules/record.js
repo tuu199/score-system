@@ -144,7 +144,9 @@
     targetSel.addEventListener('change', suggestPoints);
 
     const submitBtn = Utils.el('button', { class: 'btn btn-primary' }, ['💾 录入积分']);
-    submitBtn.addEventListener('click', () => {
+    let _submitting = false;
+    submitBtn.addEventListener('click', async () => {
+      if (_submitting) { Utils.toast('正在提交，请稍候…', 'warning'); return; }
       const category = Number(catSel.value);
       const t = targetSel.value;
       const memberId = t.startsWith('member:') ? Number(t.split(':')[1]) : null;
@@ -152,15 +154,24 @@
       const ip = Number(indivInput.value) || 0;
       const gp = Number(groupInput.value) || 0;
       if (ip === 0 && gp === 0) { Utils.toast('个人积分与小组积分不能都为 0', 'error'); return; }
+      _submitting = true;
+      submitBtn.disabled = true;
+      const origText = submitBtn.textContent;
+      submitBtn.textContent = '保存中…';
       try {
-        DB.addRecord({
+        await DB.addRecord({
           member_id: memberId, group_id: state.groupId, category, description,
           individual_points: ip, group_points: gp, week: state.week,
         });
         Utils.toast('已录入积分', 'success');
         descInput.value = '';
         refresh();
-      } catch (e) { Utils.toast('录入失败：' + e.message, 'error'); }
+      } catch (e) {
+        Utils.toast('录入失败：' + e.message, 'error');
+        _submitting = false;
+        submitBtn.disabled = false;
+        submitBtn.textContent = origText;
+      }
     });
 
     return Utils.el('div', { class: 'card' }, [
@@ -203,16 +214,31 @@
           Utils.el('td', {}, [
             Utils.el('button', {
               class: 'btn btn-danger btn-sm',
-              onclick: () => {
-                if (Utils.confirm('删除该积分记录？')) {
-                  DB.deleteRecord(r.id);
-                  Utils.toast('已删除', 'success');
-                  refresh();
-                }
-              },
             }, ['删除']),
           ]),
         ]));
+    // 给删除按钮挂事件（防止 inline onclick 里 await 失效）
+    rows.forEach((tr, idx) => {
+      if (!records[idx]) return;
+      const btn = tr.querySelector('.btn-danger');
+      if (!btn) return;
+      const r = records[idx];
+      btn.addEventListener('click', async () => {
+        if (!Utils.confirm('删除该积分记录？')) return;
+        if (btn.dataset.locked) return;
+        btn.dataset.locked = '1';
+        btn.disabled = true;
+        try {
+          await DB.deleteRecord(r.id);
+          Utils.toast('已删除', 'success');
+          refresh();
+        } catch (e) {
+          Utils.toast('删除失败：' + e.message, 'error');
+          btn.disabled = false;
+          btn.dataset.locked = '';
+        }
+      });
+    });
     return Utils.el('div', { class: 'card' }, [
       Utils.el('div', { class: 'card-title' }, ['📋 本周「' + state.week + '」「' + group.name + '」积分记录（' + records.length + ' 条）']),
       Utils.el('div', { class: 'table-wrap' }, [

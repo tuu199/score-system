@@ -86,48 +86,103 @@
         totalGroup += Number(r.group_points) || 0;
       });
 
-      resultWrap.appendChild(Utils.el('div', { class: 'stats-grid' }, [
-        Utils.el('div', { class: 'stat-card' }, [
-          Utils.el('div', { class: 'stat-label' }, ['记录条数']),
-          Utils.el('div', { class: 'stat-value' }, [records.length]),
-        ]),
-        Utils.el('div', { class: 'stat-card success' }, [
-          Utils.el('div', { class: 'stat-label' }, ['个人积分合计']),
-          Utils.el('div', { class: 'stat-value' }, ['+' + Utils.round(totalIndiv)]),
-        ]),
-        Utils.el('div', { class: 'stat-card warning' }, [
-          Utils.el('div', { class: 'stat-label' }, ['小组积分合计']),
-          Utils.el('div', { class: 'stat-value' }, ['+' + Utils.round(totalGroup)]),
-        ]),
-      ]));
+      const statCards = [
+        { label: '记录条数', value: String(records.length), extraClass: '' },
+        { label: '个人积分合计', value: '+' + Utils.round(totalIndiv), extraClass: 'success' },
+        { label: '小组积分合计', value: '+' + Utils.round(totalGroup), extraClass: 'warning' },
+      ];
+      const statsGrid = Utils.el('div', { class: 'stats-grid' });
+      statCards.forEach(s => {
+        const card = Utils.el('div', { class: 'stat-card' + (s.extraClass ? ' ' + s.extraClass : '') });
+        const lab = Utils.el('div', { class: 'stat-label' });
+        lab.textContent = s.label;
+        const val = Utils.el('div', { class: 'stat-value' });
+        val.textContent = s.value;
+        card.appendChild(lab); card.appendChild(val);
+        statsGrid.appendChild(card);
+      });
+      resultWrap.appendChild(statsGrid);
 
+      // L-2：空周次下沉的排序已在 DB.searchRecords 内处理；这里只负责展示
+      const cols = ScoreApp.isAdmin ? 9 : 8;
       const rows = records.length === 0
-        ? [Utils.el('tr', {}, [Utils.el('td', { class: 'empty', colspan: 8 }, ['没有匹配的记录'])])]
-        : records.map(r => Utils.el('tr', {}, [
-            Utils.el('td', {}, [Utils.el('span', { class: 'cat-badge cat-' + r.category }, [(cat[r.category] || { short: '其他' }).short])]),
-            Utils.el('td', {}, [r.week || '-']),
-            Utils.el('td', {}, [Utils.el('strong', {}, [r.group_name])]),
-            Utils.el('td', {}, [r.member_name ? '👤 ' + r.member_name : '👥 全组']),
-            Utils.el('td', {}, [r.description || '-']),
-            Utils.el('td', {}, [r.individual_points ? '+' + r.individual_points : '-']),
-            Utils.el('td', {}, [r.group_points ? '+' + r.group_points : '-']),
-            Utils.el('td', { style: { color: 'var(--text-soft)', fontSize: '12px' } }, [r.created_at]),
-          ]));
+        ? [Utils.el('tr', {}, [Utils.el('td', { class: 'empty', colspan: cols }, ['没有匹配的记录'])])]
+        : records.map(r => {
+          const tr = Utils.el('tr', { 'data-rid': String(r.id) });
+          const catShort = Utils.el('span', { class: 'cat-badge cat-' + r.category });
+          catShort.textContent = (cat[r.category] || { short: '其他' }).short;
+          tr.appendChild(Utils.el('td', {}, [catShort]));
+
+          const wTd = Utils.el('td', {});
+          wTd.textContent = r.week || '-';
+          tr.appendChild(wTd);
+
+          const gTd = Utils.el('td', {});
+          const gStrong = Utils.el('strong', {});
+          gStrong.textContent = r.group_name || '';
+          gTd.appendChild(gStrong);
+          tr.appendChild(gTd);
+
+          const mTd = Utils.el('td', {});
+          mTd.textContent = r.member_name ? '👤 ' + r.member_name : '👥 全组';
+          tr.appendChild(mTd);
+
+          const descTd = Utils.el('td', {});
+          descTd.textContent = r.description || '-';
+          tr.appendChild(descTd);
+
+          const iTd = Utils.el('td', {});
+          iTd.textContent = r.individual_points ? '+' + r.individual_points : '-';
+          tr.appendChild(iTd);
+
+          const gpTd = Utils.el('td', {});
+          gpTd.textContent = r.group_points ? '+' + r.group_points : '-';
+          tr.appendChild(gpTd);
+
+          const cTd = Utils.el('td', { style: { color: 'var(--text-soft)', fontSize: '12px' } });
+          cTd.textContent = r.created_at || '';
+          tr.appendChild(cTd);
+
+          if (ScoreApp.isAdmin) {
+            const opTd = Utils.el('td', {});
+            const delBtn = Utils.el('button', { class: 'btn btn-danger btn-sm' });
+            delBtn.textContent = '删除';
+            delBtn.addEventListener('click', async () => {
+              if (!Utils.confirm('删除该积分记录？')) return;
+              if (delBtn.dataset.locked) return;
+              delBtn.dataset.locked = '1'; delBtn.disabled = true;
+              try {
+                await DB.deleteRecord(r.id);
+                Utils.toast('已删除', 'success');
+                renderResults();
+              } catch (e) {
+                Utils.toast('删除失败：' + e.message, 'error');
+                delBtn.disabled = false; delBtn.dataset.locked = '';
+              }
+            });
+            opTd.appendChild(delBtn);
+            tr.appendChild(opTd);
+          }
+          return tr;
+        });
+
+      const theadCells = [
+        Utils.el('th', {}, ['类别']),
+        Utils.el('th', {}, ['周次']),
+        Utils.el('th', {}, ['小组']),
+        Utils.el('th', {}, ['归属']),
+        Utils.el('th', {}, ['说明']),
+        Utils.el('th', {}, ['个人']),
+        Utils.el('th', {}, ['小组']),
+        Utils.el('th', {}, ['时间']),
+      ];
+      if (ScoreApp.isAdmin) theadCells.push(Utils.el('th', {}, ['操作']));
 
       resultWrap.appendChild(Utils.el('div', { class: 'card' }, [
         Utils.el('div', { class: 'card-title' }, ['📋 查询结果（' + records.length + ' 条）']),
         Utils.el('div', { class: 'table-wrap' }, [
           Utils.el('table', { class: 'data' }, [
-            Utils.el('thead', {}, [Utils.el('tr', {}, [
-              Utils.el('th', {}, ['类别']),
-              Utils.el('th', {}, ['周次']),
-              Utils.el('th', {}, ['小组']),
-              Utils.el('th', {}, ['归属']),
-              Utils.el('th', {}, ['说明']),
-              Utils.el('th', {}, ['个人']),
-              Utils.el('th', {}, ['小组']),
-              Utils.el('th', {}, ['时间']),
-            ])]),
+            Utils.el('thead', {}, [Utils.el('tr', {}, theadCells)]),
             Utils.el('tbody', {}, rows),
           ]),
         ]),

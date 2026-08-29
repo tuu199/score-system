@@ -115,20 +115,28 @@
           class: 'share-card',
           style: { borderLeft: `3px solid ${item.color}` },
         });
+        const typeLabel = Utils.el('span', {
+          style: { fontSize: '12px', color: '#fff', background: item.color, padding: '2px 8px', borderRadius: '10px' },
+        });
+        typeLabel.textContent = item.type;
+        const timeSpan = Utils.el('span', { class: 'share-time' });
+        timeSpan.textContent = item.time;
         card.appendChild(Utils.el('div', { class: 'share-header' }, [
           Utils.el('span', { style: { fontSize: '16px' } }, [item.icon]),
-          Utils.el('span', {
-            style: { fontSize: '12px', color: '#fff', background: item.color, padding: '2px 8px', borderRadius: '10px' },
-          }, [item.type]),
-          Utils.el('span', { class: 'share-time' }, [item.time]),
+          typeLabel,
+          timeSpan,
         ]));
-        card.appendChild(Utils.el('div', {
+        const descDiv = Utils.el('div', {
           style: { fontSize: '14px', color: 'var(--text)', lineHeight: 1.5 },
-        }, [item.desc]));
+        });
+        descDiv.textContent = item.desc;
+        card.appendChild(descDiv);
         if (item.week) {
-          card.appendChild(Utils.el('div', {
+          const wk = Utils.el('div', {
             style: { fontSize: '12px', color: 'var(--text-soft)', marginTop: '4px' },
-          }, ['周次：' + item.week]));
+          });
+          wk.textContent = '周次：' + item.week;
+          card.appendChild(wk);
         }
         listContainer.appendChild(card);
       });
