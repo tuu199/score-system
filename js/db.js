@@ -442,10 +442,28 @@
   }
 
   /** ========== 分享板 CRUD ========== */
-  function listShares({ groupId = 0, week = '' } = {}) {
+  /**
+   * 从 ISO 字符串生成 'YYYY-MM' 月份键，归档 / 统计按月用。
+   * 兼容 '2026-07-15 10:00:00' 和 '2026-07-15T10:00:00.000Z' 两种格式。
+   */
+  function _monthKey(isoDateStr) {
+    const m = /^(\d{4})[-/](\d{1,2})/.exec(String(isoDateStr || ''));
+    if (!m) return '';
+    return m[1] + '-' + String(m[2]).padStart(2, '0');
+  }
+  /** 是否是带媒体（视频/图片）的分享 —— 这些才会吃 Storage 容量和月出流量，纯文本不需要归档。 */
+  function _shareHasMedia(s) {
+    if (!s) return false;
+    if (s.video_data) return true;
+    if (s.image_data) return true;
+    const l = s.link || '';
+    return !!(l && /\.(mp4|m4v|webm|ogg|ogv|mov|3gp|avi|mkv|ts|jpg|jpeg|png|gif|webp)(\?|#|$)/i.test(l));
+  }
+  function listShares({ groupId = 0, week = '', includeArchived = false } = {}) {
     let shares = _cache.shares.slice();
     if (groupId) shares = shares.filter(s => s.group_id === groupId);
     if (week) shares = shares.filter(s => s.week === week);
+    if (!includeArchived) shares = shares.filter(s => !s.archived);
     return shares.map(s => {
       const g = _cache.groups.find(g => g.id === s.group_id);
       const m = s.member_id ? _cache.members.find(m => m.id === s.member_id) : null;
@@ -475,6 +493,7 @@
     // 先等前一个锁释放完成，再做检查 + 插入
     return lock.wait.then(() => {
       const now = _now();
+      const mk = _monthKey(now);
       const sharePromise = _insert('shares', {
         member_id: member_id || null,
         group_id,
@@ -486,6 +505,9 @@
         week: week || '',
         created_at: now,
         is_announcement: is_announcement ? 1 : 0,
+        archived: 0,
+        archived_at: '',
+        month_key: mk,
       });
       let pointsAwarded = 0;
       let reachedCap = false;
@@ -577,6 +599,46 @@
     _cleanStorageUrl(share && share.image_data);
     _cleanStorageUrl(share && share.video_data);
     return Promise.resolve(true);
+  }
+
+  /**
+   * 批量归档“指定月份 + 带媒体”的分享（纯文本不动）。
+   * 默认 targetMonthKey = 上个月（例如今天 2026-08-29 → '2026-07'）。
+   * 归档 ≠ 删除：行保留，Storage 视频文件保留，只是从默认视图隐藏，切 Tab 还能找回且继续播放。
+   * 这样可以显著减少「默认首页反复播放旧视频」带来的月出流量消耗（Supabase Free 档 2GB/月出）。
+   * 返回 { month, archived }
+   */
+  async function archiveSharesByMonth(targetMonthKey) {
+    let month = String(targetMonthKey || '');
+    if (!month) {
+      const d = new Date();
+      const lm = new Date(d.getFullYear(), d.getMonth() - 1, 1);
+      month = `${lm.getFullYear()}-${String(lm.getMonth() + 1).padStart(2, '0')}`;
+    }
+    const now = _now();
+    const ops = [];
+    let count = 0;
+    _cache.shares.forEach(s => {
+      if (s.archived) return;
+      if ((s.month_key || _monthKey(s.created_at)) !== month) return;
+      if (!_shareHasMedia(s)) return;
+      count++;
+      ops.push(_update('shares', s.id, { archived: 1, archived_at: now }));
+    });
+    await Promise.all(ops);
+    return { month, archived: count };
+  }
+  /** 快捷：归档“上个月”全部带媒体的分享 —— 管理员一键按钮绑定 */
+  async function archiveLastMonthMediaShares(todayIso) {
+    const d = todayIso ? new Date(String(todayIso)) : new Date();
+    const lm = new Date(d.getFullYear(), d.getMonth() - 1, 1);
+    const key = `${lm.getFullYear()}-${String(lm.getMonth() + 1).padStart(2, '0')}`;
+    return archiveSharesByMonth(key);
+  }
+  /** 取消某条分享的归档（恢复到默认视图）—— 用于查看归档里误操作撤销 */
+  async function unarchiveShare(id) {
+    await _update('shares', id, { archived: 0, archived_at: '' });
+    return true;
   }
 
   /** ========== 文档 CRUD ========== */
@@ -974,7 +1036,7 @@
     // search
     searchRecords,
     // shares
-    listShares, addShare, deleteShare, uploadFile,
+    listShares, addShare, deleteShare, archiveSharesByMonth, archiveLastMonthMediaShares, unarchiveShare, uploadFile,
     // docs
     listDocs, addDoc, deleteDoc, uploadFile,
     // statistics & ranking

@@ -133,13 +133,19 @@
       contentTextarea,
     ]));
 
-    // 链接
+    // 链接（支持视频直链：.mp4/.webm/.mov 等）
     const linkInput = Utils.el('input', {
-      class: 'form-input', type: 'text', placeholder: '链接（可选，图片/视频/文章网址）', id: 'share-link',
+      class: 'form-input', type: 'text',
+      placeholder: '视频/图片/文章链接（可选；视频请用 .mp4/.webm/.mov 直链，或粘贴 B 站链接）',
+      id: 'share-link',
     });
+    const linkHint = Utils.el('div', {
+      style: { fontSize: '12px', color: '#92400e', marginTop: '4px', lineHeight: 1.6 },
+    });
+    linkHint.innerHTML = '💡 <b>发视频链接可以吗？可以！</b> 而且推荐：因为视频文件≤49MB 是 Supabase 免费档死线（全局 50MB 无法改成 150MB），<b>超过 49MB 的视频先上传到 B 站 / 阿里云盘 / 百度网盘 / 企业微信「微盘」再把可分享链接贴这里，免费档流量不会爆</b>。识别到 .mp4/.webm/.mov 直链会自动生成视频卡片内嵌播放。';
     formCard.appendChild(Utils.el('div', { class: 'form-row' }, [
-      Utils.el('label', {}, ['链接']),
-      linkInput,
+      Utils.el('label', {}, ['链接 / 视频链接']),
+      Utils.el('div', { style: { width: '100%' } }, [linkInput, linkHint]),
     ]));
 
     // 图片上传
@@ -217,7 +223,7 @@
     const videoBtn = Utils.el('button', {
       type: 'button', class: 'btn btn-ghost',
       style: { marginTop: '8px' },
-    }, ['🎥 添加视频（可选，≤150MB）']);
+    }, ['🎥 添加视频（可选，≤49MB，受 Supabase 免费档限制）']);
     const videoPreview = Utils.el('div', { id: 'video-preview', style: { marginTop: '8px' } });
     const formatBytes = (n) => {
       if (n < 1024) return n + ' B';
@@ -225,7 +231,7 @@
       if (n < 1024 * 1024 * 1024) return (n / 1024 / 1024).toFixed(1) + ' MB';
       return (n / 1024 / 1024 / 1024).toFixed(2) + ' GB';
     };
-    const VIDEO_MAX = 150 * 1024 * 1024;
+    const VIDEO_MAX = 49 * 1024 * 1024;
 
     function clearVideo() {
       videoData = '';
@@ -237,7 +243,7 @@
       const file = e.target.files && e.target.files[0];
       if (!file) return;
       if (file.size > VIDEO_MAX) {
-        Utils.toast('视频大小不能超过 150MB，当前：' + formatBytes(file.size), 'error');
+        Utils.toast('视频大小不能超过 49MB（Supabase 免费档全局上限 50MB），当前：' + formatBytes(file.size), 'error');
         videoInput.value = '';
         return;
       }
@@ -411,15 +417,78 @@
     view.appendChild(formCard);
 
     // 筛选栏
-    const filterRow = Utils.el('div', { class: 'filter-row', style: { display: 'flex', gap: '10px', marginBottom: '12px', alignItems: 'center' } });
+    const filterRow = Utils.el('div', { class: 'filter-row', style: { display: 'flex', gap: '10px', marginBottom: '12px', alignItems: 'center', flexWrap: 'wrap' } });
     const weekFilter = Utils.el('select', { class: 'form-input', style: { width: 'auto' } });
     weekFilter.appendChild(Utils.el('option', { value: '' }, ['全部周次']));
     weeks.forEach(w => {
       weekFilter.appendChild(Utils.el('option', { value: w, selected: w === currentWeek }, [w]));
     });
+    // 视图 Tab：默认「当前分享」= 不看归档；「查看归档」= 只看归档
+    const viewTabs = Utils.el('div', {
+      style: {
+        display: 'inline-flex', border: '1px solid var(--border)', borderRadius: '8px',
+        overflow: 'hidden', marginLeft: 'auto', background: 'var(--surface)',
+      },
+    });
+    let curView = 'active'; // 'active' | 'archived'
+    const tabActive = Utils.el('button', { type: 'button', class: 'btn btn-sm', style: { borderRadius: 0, background: 'var(--primary)', color: '#fff', border: 'none' } }, ['🟢 当前分享']);
+    const tabArchive = Utils.el('button', { type: 'button', class: 'btn btn-sm btn-ghost', style: { borderRadius: 0, border: 'none' } }, ['📦 查看归档']);
+    function syncTabs() {
+      if (curView === 'active') {
+        tabActive.style.background = 'var(--primary)';
+        tabActive.style.color = '#fff';
+        tabArchive.style.background = 'transparent';
+        tabArchive.style.color = '';
+      } else {
+        tabArchive.style.background = 'var(--primary)';
+        tabArchive.style.color = '#fff';
+        tabActive.style.background = 'transparent';
+        tabActive.style.color = '';
+      }
+    }
+    tabActive.addEventListener('click', () => { curView = 'active'; syncTabs(); renderList(); });
+    tabArchive.addEventListener('click', () => { curView = 'archived'; syncTabs(); renderList(); });
+    viewTabs.appendChild(tabActive);
+    viewTabs.appendChild(tabArchive);
+
     filterRow.appendChild(Utils.el('span', { style: { fontSize: '14px', color: 'var(--text-soft)' } }, ['周次：']));
     filterRow.appendChild(weekFilter);
+    filterRow.appendChild(viewTabs);
     view.appendChild(filterRow);
+
+    // 管理员工具条：归档上月媒体（视频/图片）分享 —— 减少默认首页产生的出流量 + Storage 视觉噪音，不物理删除
+    if (ScoreApp.isAdmin && typeof DB.archiveLastMonthMediaShares === 'function') {
+      const adminBar = Utils.el('div', {
+        class: 'card',
+        style: { padding: '10px 14px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '8px', background: '#eff6ff', border: '1px dashed #93c5fd' },
+      });
+      const adminNote = Utils.el('div', { style: { fontSize: '13px', color: '#1e40af', lineHeight: 1.6 } });
+      adminNote.innerHTML = '🛠️ <b>月度归档</b>（仅归档<b>上个月带视频/图片</b>的分享，纯文本不动）：<br/>'
+        + '归档 = 默认视图隐藏，不删 Storage 文件，切到「📦 查看归档」还能播放；可显著减少「旧视频反复观看」吃掉的 2GB/月流量。';
+      const archiveBtn = Utils.el('button', {
+        type: 'button', class: 'btn btn-primary btn-sm',
+        style: { background: '#2563eb', whiteSpace: 'nowrap' },
+      }, ['📦 一键归档上月媒体分享']);
+      archiveBtn.addEventListener('click', async () => {
+        if (archiveBtn.dataset.locked === '1') return;
+        if (!Utils.confirm('确定一键归档【上个月】所有带视频/图片的分享？\n（不会删除文件，只是默认隐藏，「查看归档」里还能找回并继续播放）')) return;
+        try {
+          archiveBtn.dataset.locked = '1';
+          archiveBtn.disabled = true;
+          const r = await DB.archiveLastMonthMediaShares();
+          Utils.toast(`✅ 已归档 ${r.month} 月：共 ${r.archived} 条带媒体的分享`, 'success');
+          renderList();
+        } catch (e) {
+          Utils.toast('归档失败：' + e.message, 'error');
+        } finally {
+          archiveBtn.dataset.locked = '';
+          archiveBtn.disabled = false;
+        }
+      });
+      adminBar.appendChild(adminNote);
+      adminBar.appendChild(archiveBtn);
+      view.appendChild(adminBar);
+    }
 
     // 分享列表
     const listContainer = Utils.el('div', { id: 'shares-list' });
@@ -427,12 +496,20 @@
 
     function renderList() {
       const filterWeek = weekFilter.value;
-      const list = filterWeek ? DB.listShares({ week: filterWeek }) : DB.listShares();
+      const includeArchived = curView === 'archived';
+      let list;
+      if (filterWeek) list = DB.listShares({ week: filterWeek, includeArchived: true });
+      else list = DB.listShares({ includeArchived: true });
+      // 根据 view 再过滤（避免修改 listShares 语义导致归档 Tab 拿不到 / 默认拿错）
+      if (curView === 'archived') list = list.filter(s => !!s.archived);
+      else list = list.filter(s => !s.archived);
       listContainer.innerHTML = '';
 
       if (list.length === 0) {
         const empty = Utils.el('div', { class: 'card', style: { textAlign: 'center', color: 'var(--text-soft)' } });
-        empty.textContent = '📭 暂无分享，快来发第一条吧！';
+        empty.textContent = curView === 'archived'
+          ? '📦 目前没有归档的分享（归档仅收上个月带视频/图片的分享）'
+          : '📭 暂无分享，快来发第一条吧！';
         listContainer.appendChild(empty);
         return;
       }
@@ -610,7 +687,7 @@
             }
           }
         }
-        // 底部：周次 + 删除按钮（管理员可删）
+        // 底部：周次 + 删除按钮（管理员可删）+ 归档标签/恢复按钮
         const footer = Utils.el('div', { class: 'share-footer' });
         // L-2：空 week 不渲染「空 span」占位，避免显示无意义标签
         if (s.week) {
@@ -618,7 +695,42 @@
           weekSpan.textContent = s.week;
           footer.appendChild(weekSpan);
         }
+        // 归档状态：给一个显眼的徽章
+        if (s.archived) {
+          const archBadge = Utils.el('span', {
+            style: {
+              marginLeft: '6px', fontSize: '12px', padding: '2px 8px',
+              borderRadius: '999px', background: '#fef3c7', color: '#92400e',
+              border: '1px solid #fcd34d',
+            },
+          });
+          archBadge.textContent = '📦 已归档 · ' + (s.archived_at ? String(s.archived_at).slice(0, 10) : '');
+          footer.appendChild(archBadge);
+        }
         if (ScoreApp.isAdmin) {
+          if (s.archived && typeof DB.unarchiveShare === 'function') {
+            const unarchBtn = Utils.el('button', {
+              class: 'btn btn-sm btn-ghost',
+              style: { float: 'right', padding: '2px 8px', fontSize: '12px', marginLeft: '6px', color: '#166534', border: '1px solid #86efac' },
+            });
+            unarchBtn.textContent = '↩️ 恢复到当前';
+            unarchBtn.addEventListener('click', async () => {
+              if (unarchBtn.dataset.locked === '1') return;
+              if (!Utils.confirm('确定把这条分享从归档恢复回「当前分享」视图？')) return;
+              try {
+                unarchBtn.dataset.locked = '1';
+                unarchBtn.disabled = true;
+                await DB.unarchiveShare(s.id);
+                Utils.toast('已恢复到当前分享', 'info');
+                renderList();
+              } catch (e) {
+                Utils.toast('恢复失败：' + e.message, 'error');
+                unarchBtn.disabled = false;
+                unarchBtn.dataset.locked = '';
+              }
+            });
+            footer.appendChild(unarchBtn);
+          }
           const delBtn = Utils.el('button', {
             class: 'btn btn-danger btn-sm',
             style: { float: 'right', padding: '2px 8px', fontSize: '12px' },

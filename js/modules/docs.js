@@ -60,7 +60,7 @@
       let uploadedFileName = '';
       const fileInput = Utils.el('input', {
         type: 'file', id: 'doc-file',
-        accept: '.pdf,.doc,.docx,.docm,.dot,.dotx,.dotm,.xls,.xlsx,.xlsm,.xlsb,.xlt,.xltx,.csv,.ppt,.pptx,.pptm,.pot,.potx,.pps,.ppsx,.rtf,.txt,.jpg,.jpeg,.png,.gif,.webp,.svg,.zip,.rar,.7z,.msg',
+        accept: '.pdf,.doc,.docx,.docm,.dot,.dotx,.dotm,.xls,.xlsx,.xlsm,.xlsb,.xlt,.xltx,.csv,.ppt,.pptx,.pptm,.pot,.potx,.pps,.ppsx,.rtf,.txt,.jpg,.jpeg,.png,.gif,.webp,.svg,.zip,.rar,.7z,.msg,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/vnd.ms-excel,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-powerpoint,application/vnd.openxmlformats-officedocument.presentationml.presentation,application/pdf,text/plain',
         style: { display: 'none' },
       });
       const fileBtn = Utils.el('button', {
@@ -69,12 +69,24 @@
         style: { marginTop: '4px' },
       }, ['📎 上传文件']);
       const fileNameLabel = Utils.el('span', { id: 'doc-file-name', style: { fontSize: '13px', color: 'var(--text-soft)', marginLeft: '8px' } }, []);
+      // 提示：Word 上传最常见失败 & 绕过方案
+      const docTip = Utils.el('div', {
+        style: { fontSize: '12px', color: '#92400e', marginTop: '4px', lineHeight: 1.6, maxWidth: '720px' },
+      });
+      docTip.innerHTML = '💡 <b>关于文档上传：</b>① <b>Word / PPT > 10MB 或预览空白</b> → 先另存为 PDF 再上传最稳（手机也能直接打开）；② 如果 .docx 仍然上传失败，把链接贴到「链接」栏（飞书文档 / 腾讯文档 / 网盘链接都行）；③ 单文件上限 49MB（Supabase 免费档全局封顶 50MB）。';
       fileBtn.addEventListener('click', () => fileInput.click());
       fileInput.addEventListener('change', async (e) => {
         const file = e.target.files[0];
         if (!file) return;
-        if (file.size > 50 * 1024 * 1024) {
-          Utils.toast('文件不能超过50MB', 'error');
+        if (file.size > 49 * 1024 * 1024) {
+          Utils.toast('文件不能超过 49MB（Supabase 免费档全局封顶 50MB；超过请先发飞书/网盘，再贴链接）', 'error');
+          fileInput.value = '';
+          return;
+        }
+        // 额外校验：没有扩展名 / 浏览器返回不支持的 MIME，给明确提示
+        const ext = (file.name.split('.').pop() || '').toLowerCase();
+        if (!ext || /^(exe|bat|cmd|msi|js|html|htm|url)$/.test(ext)) {
+          Utils.toast('出于安全，不支持该类文件，请压缩成 .zip 或改成常见格式后再上传', 'error');
           fileInput.value = '';
           return;
         }
@@ -82,7 +94,7 @@
         fileBtn.disabled = true;
         try {
           const publicUrl = await DB.uploadFile(file);
-          if (!publicUrl) throw new Error('未返回公开链接');
+          if (!publicUrl) throw new Error('未返回公开链接（请检查 Storage）');
           linkInput.value = publicUrl;
           uploadedFileName = file.name;
           fileNameLabel.textContent = '✅ ' + file.name;
@@ -90,16 +102,20 @@
             const baseName = file.name.replace(/\.[^.]+$/, '');
             titleInput.value = baseName;
           }
-          Utils.toast('文件上传成功', 'success');
+          Utils.toast('文件上传成功（如 Word 预览空白：切「新窗口打开」下载即可）', 'success');
         } catch (err) {
-          Utils.toast('上传失败：' + (err.message || String(err)), 'error');
+          Utils.toast('上传失败：' + (err.message || String(err)) + '。超过 49MB 或复杂 Word 请发网盘再贴链接。', 'error');
         }
         fileBtn.textContent = '📎 上传文件';
         fileBtn.disabled = false;
         fileInput.value = '';
       });
       formCard.appendChild(Utils.el('div', { class: 'form-row' }, [
-        Utils.el('label', {}, ['文件']), fileBtn, fileInput, fileNameLabel,
+        Utils.el('label', {}, ['文件']),
+        Utils.el('div', { style: { width: '100%' } }, [
+          Utils.el('div', {}, [fileBtn, fileInput, fileNameLabel]),
+          docTip,
+        ]),
       ]));
 
       const pinCheckbox = Utils.el('input', { type: 'checkbox', id: 'doc-pin', style: { marginRight: '6px' } });

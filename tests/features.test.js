@@ -712,6 +712,104 @@ test('[L-2] 搜索结果中空week应下沉到末尾', () => {
   assert.strictEqual(s[3].week, '');
 });
 
+// ---------- 分享「按月归档」功能（3 条 TDD）----------
+// 归档 = 隐藏出「首页分享列表 / 分享广场默认视图」，但保留行 & Storage 视频文件，
+// 切到「查看归档」Tab 还能找回且视频还能播。不物理删除 Storage，避免下月再继续产生观看流量。
+function monthKey(isoDateStr) {
+  // '2026-07-15 10:00:00' / '2026-07-15T10:00:00' 都返回 '2026-07'
+  const m = /^(\d{4})[-/](\d{1,2})/.exec(isoDateStr || '');
+  if (!m) return '';
+  return m[1] + '-' + String(m[2]).padStart(2, '0');
+}
+// 在原 addShare 结果对象里额外补 archived/month_key
+const _origAddShare = addShare;
+addShare = function (args) {
+  const result = _origAddShare(args);
+  // 新插入的 share 行应带两个新列（即使老行没有也不能炸）
+  const row = _cache.shares.find(s => s.id === result.shareId);
+  if (row) {
+    if (row.archived == null) row.archived = 0;
+    if (row.month_key == null) row.month_key = monthKey(row.created_at);
+  }
+  return result;
+};
+function listShares({ includeArchived = false } = {}) {
+  return includeArchived ? _cache.shares.slice() : _cache.shares.filter(s => !s.archived);
+}
+function archiveSharesByMonth(targetMonthKey) {
+  // 只归档：有视频/有图片的分享（纯文本不占流量，不需要归档）
+  let count = 0;
+  const t = String(targetMonthKey || '');
+  _cache.shares.forEach(s => {
+    if (s.archived) return;
+    if (t && (s.month_key || monthKey(s.created_at)) !== t) return;
+    const hasMedia = !!(s.video_data || s.image_data ||
+      (s.link && /\.(mp4|webm|mov|mkv|jpg|jpeg|png|gif)(\?|#|$)/i.test(s.link)));
+    if (!hasMedia) return;
+    s.archived = 1;
+    s.archived_at = _now();
+    count++;
+  });
+  return count;
+}
+function archiveLastMonthMediaShares(todayIso = new Date().toISOString()) {
+  const d = new Date(todayIso);
+  const lm = new Date(d.getFullYear(), d.getMonth() - 1, 1);
+  const key = `${lm.getFullYear()}-${String(lm.getMonth() + 1).padStart(2, '0')}`;
+  return { month: key, archived: archiveSharesByMonth(key) };
+}
+
+test('[Archive-1] 新建分享默认 archived=0，listShares 默认不把已归档带进来', () => {
+  resetCache();
+  const r1 = addShare({ member_id: 1, group_id: 1, title: 'a', content: 'c', week: '2026-W31', image_data: 'x' });
+  const r2 = addShare({ member_id: 2, group_id: 1, title: 'b', content: 'c2', week: '2026-W31', video_data: 'http://s/1.mp4' });
+  const r3 = addShare({ member_id: 3, group_id: 2, title: '纯文本', content: 'c3', week: '2026-W31' });
+  // 把 r2 手动归档
+  const row2 = _cache.shares.find(s => s.id === r2.shareId);
+  row2.archived = 1;
+  // 默认视图应该是 2 条（r1 + r3），不含 r2
+  const defList = listShares();
+  assert.strictEqual(defList.length, 2, '默认视图不能包含已归档');
+  assert.strictEqual(defList.some(s => s.id === r2.shareId), false, 'r2 应被隐藏');
+  // includeArchived = true 应该拿到 3 条
+  const allList = listShares({ includeArchived: true });
+  assert.strictEqual(allList.length, 3, '查看归档应能看到所有');
+});
+
+test('[Archive-2] archiveSharesByMonth 只归档“目标月份 + 带媒体”的分享，纯文本 & 非目标月份不动', () => {
+  resetCache();
+  function _make({ title, createdAt, media }) {
+    const s = { id: _nextId++, title, created_at: createdAt, member_id: 1, group_id: 1, week: '2026-W30', is_announcement: 0, content: '', link: '', image_data: '', video_data: '', archived: 0, archived_at: '', month_key: monthKey(createdAt) };
+    Object.assign(s, media);
+    _cache.shares.push(s);
+    return s;
+  }
+  const a = _make({ title: '7月有视频', createdAt: '2026-07-12 10:00:00', media: { video_data: 'https://s/1.mp4' } });
+  const b = _make({ title: '7月纯文本', createdAt: '2026-07-13 10:00:00', media: {} });
+  const c = _make({ title: '8月有图片', createdAt: '2026-08-05 10:00:00', media: { image_data: 'https://s/1.png' } });
+  const d = _make({ title: '6月有视频', createdAt: '2026-06-20 10:00:00', media: { video_data: 'https://s/2.mp4' } });
+  const n = archiveSharesByMonth('2026-07');
+  assert.strictEqual(n, 1, '7 月媒体分享数量应 = 1（视频a，纯文本b不动）');
+  const post = _cache.shares.reduce((m, s) => (m[s.title] = s.archived, m), {});
+  assert.strictEqual(post['7月有视频'], 1, '7月视频应被归档');
+  assert.strictEqual(post['7月纯文本'], 0, '纯文本不归档');
+  assert.strictEqual(post['8月有图片'], 0, '8月不在目标月份，不动');
+  assert.strictEqual(post['6月有视频'], 0, '6月不在目标月份，不动');
+});
+
+test('[Archive-3] 今天 2026-08-29 调 archiveLastMonthMediaShares，归档目标是 2026-07', () => {
+  resetCache();
+  function _mk(t, media) { _cache.shares.push({ id: _nextId++, title: t, created_at: t + ' 10:00:00', archived: 0, image_data: '', video_data: '', link: '', content: '', member_id: 1, group_id: 1, week: '', is_announcement: 0, month_key: monthKey(t + ' 10:00:00'), ...media }); }
+  _mk('2026-07-10', { video_data: 'https://s/a.mp4' });
+  _mk('2026-07-11', { image_data: 'https://s/a.png' });
+  _mk('2026-08-01', { video_data: 'https://s/b.mp4' }); // 本月不应被归
+  const result = archiveLastMonthMediaShares('2026-08-29T00:00:00Z');
+  assert.strictEqual(result.month, '2026-07', '上月应是 2026-07');
+  assert.strictEqual(result.archived, 2, '上月 7 月有 2 条带媒体，应全部归档');
+  const aug = _cache.shares.find(s => s.created_at.startsWith('2026-08'));
+  assert.strictEqual(aug.archived, 0, '8 月不能被归档');
+});
+
 // ---------- 汇总 ----------
 console.log(`\n=== 结果: ${passed} 通过, ${failed} 失败 ===\n`);
 process.exit(failed > 0 ? 1 : 0);

@@ -35,10 +35,21 @@
     typeFilter.appendChild(Utils.el('option', { value: 'announcement' }, ['📢 管理员公告']));
     typeFilter.appendChild(Utils.el('option', { value: 'share' }, ['💬 同学分享']));
 
+    // 归档切换：分享广场「默认不显示归档」—— 避免旧视频反复被点开继续吃月流量
+    let showArchived = false;
+    const archToggle = Utils.el('button', {
+      type: 'button', class: 'btn btn-sm btn-ghost',
+      style: { border: '1px solid var(--border)', marginLeft: 'auto' },
+    });
+    function syncArchToggle() { archToggle.textContent = showArchived ? '🟢 只看当前（隐藏归档）' : '📦 显示归档（含上月视频）'; }
+    syncArchToggle();
+    archToggle.addEventListener('click', () => { showArchived = !showArchived; syncArchToggle(); renderList(); });
+
     filterRow.appendChild(Utils.el('span', { style: { fontSize: '14px', color: 'var(--text-soft)' } }, ['周次：']));
     filterRow.appendChild(weekFilter);
     filterRow.appendChild(Utils.el('span', { style: { fontSize: '14px', color: 'var(--text-soft)', marginLeft: '10px' } }, ['类型：']));
     filterRow.appendChild(typeFilter);
+    filterRow.appendChild(archToggle);
     view.appendChild(filterRow);
 
     // 分享列表容器
@@ -48,7 +59,10 @@
     function renderList() {
       const filterWeek = weekFilter.value;
       const filterType = typeFilter.value;
-      let list = DB.listShares();
+      let list = DB.listShares({ includeArchived: true });
+
+      // 按归档视图过滤（默认不显示归档）
+      if (!showArchived) list = list.filter(s => !s.archived);
 
       // 按类型筛选
       if (filterType === 'announcement') {
@@ -73,7 +87,7 @@
 
       if (list.length === 0) {
         listContainer.appendChild(Utils.el('div', { class: 'card', style: { textAlign: 'center', color: 'var(--text-soft)', padding: '40px' } }, [
-          '📭 暂无分享内容',
+          showArchived ? '📦 没有归档的分享内容' : '📭 暂无分享内容（上个月的视频/图片会被归档，可点右上「📦 显示归档」查看）',
         ]));
         return;
       }
@@ -258,6 +272,18 @@
         } else {
           // 即使没有 week，也占位一个空 span，保持 flex 对齐（视觉不突兀）
           footer.appendChild(Utils.el('span', {}));
+        }
+        // 归档标签：如果是已归档分享，醒目标记
+        if (s.archived) {
+          const badge = Utils.el('span', {
+            style: {
+              fontSize: '12px', padding: '2px 8px', borderRadius: '999px',
+              background: '#fef3c7', color: '#92400e', border: '1px solid #fcd34d',
+              marginRight: '6px',
+            },
+          });
+          badge.textContent = '📦 已归档 · ' + (s.archived_at ? String(s.archived_at).slice(0, 10) : '');
+          footer.appendChild(badge);
         }
         if (ScoreApp.isAdmin) {
           const delBtn = Utils.el('button', {
