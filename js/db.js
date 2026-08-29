@@ -743,6 +743,12 @@
     const ts = Date.now();
     const rand = Math.random().toString(36).slice(2, 8);
     const fileName = _buildSafeStorageKey(file.name, bucket, ts, rand);
+    // 从 file.name（原始文件名）按「最后一个点」取扩展名，作为 MIME 查表 key（fileName 的扩展名已过滤，二者一致即可）
+    let ext = 'bin';
+    const lastDot = String(file.name || '').lastIndexOf('.');
+    if (lastDot > 0 && lastDot < String(file.name).length - 1) {
+      ext = String(file.name).slice(lastDot + 1).toLowerCase().replace(/[^a-z0-9]/g, '') || 'bin';
+    }
 
     // --- 扩展名 -> MIME 映射（解决 Word/Excel 上传失败：老浏览器/老 Office 文件 type 为空或错误） ---
     const EXT_MIME = {
