@@ -15,6 +15,30 @@
 
   /** H-4 + 原子一致性：负 id 的 pending 操作队列（更新/删除），等真实 id 回写后再发 Supabase */
   const _pendingOps = {}; // { [tempId]: Array<{op:'update'|'delete', updates?}> }
+  /** v=59：记录每张表已经被 Supabase 报「找不到列」的字段名，下次 insert/update 自动 strip 掉，
+   *  解决「代码加了新字段但数据库没跑 ALTER TABLE」导致的整表云端同步失败问题 */
+  const _missingCols = {}; // { [table]: Set<string> }
+  function _getMissingCols(table) {
+    if (!_missingCols[table]) _missingCols[table] = new Set();
+    return _missingCols[table];
+  }
+  /** 从 Supabase 错误消息里提取缺的列名（正则兼容两种常见格式） */
+  function _extractMissingColumnFromError(msg) {
+    const s = String(msg || '');
+    const m1 = s.match(/Could not find the ['"`]?([A-Za-z_][A-Za-z0-9_]*)['"`]? column(?: of ['"`]?([A-Za-z_][A-Za-z0-9_]*)['"`]?)?/i);
+    if (m1 && m1[1]) return m1[1];
+    const m2 = s.match(/column ['"`]?([A-Za-z_][A-Za-z0-9_]*)['"`]? (?:does not exist|not found)/i);
+    if (m2 && m2[1]) return m2[1];
+    return null;
+  }
+  /** 从一个对象里剔除已知缺列，返回清理后的新对象；不改原对象 */
+  function _stripMissingCols(table, obj) {
+    const miss = _getMissingCols(table);
+    if (!miss.size) return obj;
+    const out = {};
+    Object.keys(obj).forEach(k => { if (!miss.has(k)) out[k] = obj[k]; });
+    return out;
+  }
   function _enqueuePending(tempId, op) {
     if (tempId >= 0) return false;
     if (!_pendingOps[tempId]) _pendingOps[tempId] = [];
@@ -35,8 +59,8 @@
           if (idx >= 0) _cache[table].splice(idx, 1);
         } else if (op.op === 'update') {
           Object.assign(realItem, op.updates);
-          supabase.from(table).update(op.updates).eq('id', realId).then(({ error }) => {
-            if (error) console.error(`Supabase pending update ${table}:${realId}:`, error.message);
+          _safeUpdate(table, realId, op.updates).then(({ error }) => {
+            if (error) console.error(`Supabase pending update ${table}:${realId}:`, error.message || String(error));
           });
         }
       } catch (err) { console.error(`Pending flush ${table}:${realId}`, err); }
@@ -128,16 +152,79 @@
     (st.data || []).forEach(row => { _cache.settings[row.key] = row.value; });
   }
 
+  /** 在 DB 层做一次「缺列错误→记忆+重试」的闭环 insert，最多 MAX_RETRIES 次 strip-retry（每次可能新增一个缺列名）。
+   *  返回 Promise<{data, error}>，语义和 supabase.from().insert().select() 一致。 */
+  function _safeInsert(table, row) {
+    const MAX_RETRIES = 8;
+    let attempt = 0;
+    let currentRow = _stripMissingCols(table, row);
+    function go() {
+      attempt++;
+      return supabase.from(table).insert(currentRow).select().then(({ data, error }) => {
+        if (!error) return { data, error: null };
+        const col = _extractMissingColumnFromError(error.message);
+        if (col && attempt < MAX_RETRIES) {
+          _getMissingCols(table).add(col);
+          console.warn(`[DB] ${table} 缺列 '${col}'，已记住并重新尝试 insert（第 ${attempt} 次）`);
+          currentRow = _stripMissingCols(table, currentRow);
+          return go();
+        }
+        return { data, error };
+      }).catch(err => {
+        const col = _extractMissingColumnFromError(err && err.message ? err.message : String(err));
+        if (col && attempt < MAX_RETRIES) {
+          _getMissingCols(table).add(col);
+          console.warn(`[DB] ${table} catch 缺列 '${col}'，重试（第 ${attempt} 次）`);
+          currentRow = _stripMissingCols(table, currentRow);
+          return go();
+        }
+        return { data: null, error: err };
+      });
+    }
+    return go();
+  }
+  /** 同 _safeInsert：针对 update，把 updates 里缺列 strip 后再发 Supabase；
+   *  注意 delete 不受缺列影响，所以不需要 safeDelete。 */
+  function _safeUpdate(table, idEq, updates) {
+    const MAX_RETRIES = 8;
+    let attempt = 0;
+    let cur = _stripMissingCols(table, updates);
+    function go() {
+      attempt++;
+      return supabase.from(table).update(cur).eq('id', idEq).then(({ error }) => {
+        if (!error) return { error: null };
+        const col = _extractMissingColumnFromError(error.message);
+        if (col && attempt < MAX_RETRIES) {
+          _getMissingCols(table).add(col);
+          console.warn(`[DB] ${table} update 缺列 '${col}'，记住并重试（第 ${attempt} 次）`);
+          cur = _stripMissingCols(table, cur);
+          return go();
+        }
+        return { error };
+      }).catch(err => {
+        const col = _extractMissingColumnFromError(err && err.message ? err.message : String(err));
+        if (col && attempt < MAX_RETRIES) {
+          _getMissingCols(table).add(col);
+          cur = _stripMissingCols(table, cur);
+          return go();
+        }
+        return { error: err };
+      });
+    }
+    return go();
+  }
+
   /** 异步插入到 Supabase → 返回 Promise<item>（resolve 时 item.id 已是真实 id，内存已更新）
-   *  H-4 修复：调用方能 await 拿到真实 id 再做后续修改/删除，负 id 阶段的更新/删除进入 pending 队列 */
+   *  H-4 修复：调用方能 await 拿到真实 id 再做后续修改/删除，负 id 阶段的更新/删除进入 pending 队列
+   *  v=59：缺列错误自动降级重试（代码字段 > DB schema） */
   function _insert(table, row) {
     const tempId = _nextTempId();
     const item = { ...row, id: tempId };
     _cache[table].push(item);
     // 返回一个 Promise，等 Supabase 给出真实 id 才 resolve
-    return supabase.from(table).insert(row).select().then(({ data, error }) => {
+    return _safeInsert(table, row).then(({ data, error }) => {
       if (error) {
-        console.error(`Supabase insert ${table}:`, error.message);
+        console.error(`Supabase insert ${table}:`, error.message || String(error));
         Utils.toast('同步到云端失败，请检查网络', 'error');
         // 云端失败：内存项仍保留（负 tempId），后续 reload 能纠正
         return item;
@@ -157,13 +244,14 @@
   }
 
   /** 异步更新 Supabase
-   *  H-4 修复：若 id<0，仍立刻应用到内存对象，但把操作推入 pending 队列，等真实 id 回来后再同步 */
+   *  H-4 修复：若 id<0，仍立刻应用到内存对象，但把操作推入 pending 队列，等真实 id 回来后再同步
+   *  v=59：缺列自动 strip */
   function _update(table, id, updates) {
     const item = _cache[table].find(r => r.id === id);
     if (item) Object.assign(item, updates);
     if (id > 0) {
-      supabase.from(table).update(updates).eq('id', id).then(({ error }) => {
-        if (error) console.error(`Supabase update ${table}:`, error.message);
+      _safeUpdate(table, id, updates).then(({ error }) => {
+        if (error) console.error(`Supabase update ${table}:`, error.message || String(error));
       });
     } else if (id < 0) {
       // H-4：负 id 入 pending 队列
