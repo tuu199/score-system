@@ -345,6 +345,15 @@
       };
     });
   }
+  const WEEKLY_SHARE_CAP = 4; // 分享加分每周上限4分
+
+  /** 计算该成员在指定周已经通过分享获得的积分 */
+  function getWeeklySharePoints(member_id, week) {
+    return _cache.score_records.filter(r =>
+      r.member_id === member_id && r.category === 3 && r.week === week
+    ).reduce((s, r) => s + (Number(r.individual_points) || 0), 0);
+  }
+
   function addShare({ member_id, group_id, title, content, link, image_data, week, is_announcement }) {
     const now = _now();
     const share = _insert('shares', {
@@ -358,21 +367,30 @@
       created_at: now,
       is_announcement: is_announcement ? 1 : 0,
     });
-    // 普通分享且有成员关联时自动加1分（公告和匿名不加积分）
+    let pointsAwarded = 0;
+    let reachedCap = false;
+    // 普通分享且有成员关联时自动加分，每周上限 WEEKLY_SHARE_CAP（匿名和公告不加积分）
     if (!is_announcement && member_id) {
-      _insert('score_records', {
-        member_id: member_id || null,
-        group_id,
-        category: 3,
-        description: '群分享：' + (title || (content || '').slice(0, 20)),
-        individual_points: 1,
-        group_points: 0,
-        week: week || '',
-        created_at: now,
-        recorded_by: '分享板自动',
-      });
+      const currentWeekPts = getWeeklySharePoints(member_id, week);
+      if (currentWeekPts < WEEKLY_SHARE_CAP) {
+        _insert('score_records', {
+          member_id,
+          group_id,
+          category: 3,
+          description: '群分享：' + (title || (content || '').slice(0, 20)),
+          individual_points: 1,
+          group_points: 0,
+          week: week || '',
+          created_at: now,
+          recorded_by: '分享板自动',
+        });
+        pointsAwarded = 1;
+        reachedCap = currentWeekPts + 1 >= WEEKLY_SHARE_CAP;
+      } else {
+        reachedCap = true;
+      }
     }
-    return share.id;
+    return { shareId: share.id, pointsAwarded, reachedCap, weeklyCap: WEEKLY_SHARE_CAP };
   }
   function deleteShare(id) {
     _delete('shares', id);
@@ -482,6 +500,61 @@
       if (r.indiv_pts !== lastPts) { lastRank = i + 1; lastPts = r.indiv_pts; }
       return { ...r, rank: lastRank };
     });
+  }
+
+  /** 单个小组详细统计（成员排名 / 各类别构成 / 周积分趋势），用于可视化 */
+  function getGroupStatistics(group_id) {
+    const group = _cache.groups.find(g => g.id === group_id);
+    if (!group) return null;
+    const members = _cache.members.filter(m => m.group_id === group_id);
+    const records = _cache.score_records.filter(r => r.group_id === group_id);
+
+    // 成员个人排名
+    const memberRanking = members.map(m => {
+      const mr = records.filter(r => r.member_id === m.id);
+      return {
+        id: m.id, name: m.name,
+        indiv_pts: Utils.round(mr.reduce((s, r) => s + (Number(r.individual_points) || 0), 0)),
+        record_count: mr.length,
+      };
+    }).sort((a, b) => b.indiv_pts - a.indiv_pts);
+
+    // 各类别积分构成（过滤掉没有数据的类别）
+    const byCategory = [1, 2, 3, 4, 5].map(cat => {
+      const cr = records.filter(r => r.category === cat);
+      const c = CATEGORIES[cat] || { icon: '📝', short: '其他', color: '#6b7280' };
+      return {
+        category: cat,
+        label: c.icon + ' ' + c.short,
+        color: c.color,
+        indiv_pts: Utils.round(cr.reduce((s, r) => s + (Number(r.individual_points) || 0), 0)),
+        group_pts: Utils.round(cr.reduce((s, r) => s + (Number(r.group_points) || 0), 0)),
+        total_pts: Utils.round(cr.reduce((s, r) => s + (Number(r.individual_points) || 0) + (Number(r.group_points) || 0), 0)),
+      };
+    }).filter(c => c.total_pts > 0);
+
+    // 各周积分趋势
+    const byWeek = {};
+    records.forEach(r => {
+      const w = r.week || '未指定';
+      if (!byWeek[w]) byWeek[w] = { week: w, indiv: 0, group: 0, total: 0 };
+      byWeek[w].indiv += Number(r.individual_points) || 0;
+      byWeek[w].group += Number(r.group_points) || 0;
+      byWeek[w].total += (Number(r.individual_points) || 0) + (Number(r.group_points) || 0);
+    });
+    const weekTrend = Object.values(byWeek).sort((a, b) => a.week.localeCompare(b.week));
+
+    return {
+      id: group.id, name: group.name, leader_name: group.leader_name,
+      member_count: members.length,
+      record_count: records.length,
+      indiv_pts: Utils.round(records.reduce((s, r) => s + (Number(r.individual_points) || 0), 0)),
+      group_pts: Utils.round(records.reduce((s, r) => s + (Number(r.group_points) || 0), 0)),
+      total_pts: Utils.round(records.reduce((s, r) => s + (Number(r.individual_points) || 0) + (Number(r.group_points) || 0), 0)),
+      member_ranking: memberRanking,
+      by_category: byCategory,
+      week_trend: weekTrend,
+    };
   }
 
   /** ========== 设置（密码管理） ========== */
@@ -604,7 +677,7 @@
     // docs
     listDocs, addDoc, deleteDoc, uploadFile,
     // statistics & ranking
-    computeStatistics, getGroupRanking, getIndividualRanking,
+    computeStatistics, getGroupRanking, getIndividualRanking, getGroupStatistics, getWeeklySharePoints, WEEKLY_SHARE_CAP,
     // settings
     getSetting, setSetting, getPassword, setPassword, checkPassword,
     // persistence

@@ -204,11 +204,18 @@
     const anonLabel = Utils.el('label', { style: { display: 'flex', alignItems: 'center', cursor: 'pointer' } }, [anonCheckbox, Utils.el('span', {}, ['🕶️ 匿名发布（不显示姓名，不加分）'])]);
     formCard.appendChild(Utils.el('div', { class: 'form-row' }, [anonLabel]));
 
+    // 本周分享上限提示
+    const cap = DB.WEEKLY_SHARE_CAP || 4;
+    const capHint = Utils.el('div', {
+      style: { fontSize: '12px', color: 'var(--text-soft)', marginTop: '6px', textAlign: 'right' },
+    }, ['💡 实名分享每周积分上限 ' + cap + ' 分']);
+    formCard.appendChild(capHint);
+
     // 提交按钮
     const submitBtn = Utils.el('button', {
       class: 'btn btn-primary',
       style: { marginTop: '10px', width: '100%' },
-    }, ['📤 发布分享（+1分）']);
+    }, ['📤 发布分享']);
     submitBtn.addEventListener('click', () => {
       const gid = Number(groupSelect.value);
       const mid = Number(memberSelect.value) || null;
@@ -220,11 +227,20 @@
       if (!isAnon && !mid) { Utils.toast('请选择成员或勾选匿名', 'error'); return; }
       if (!content && !imageBase64) { Utils.toast('请填写分享内容或添加图片', 'error'); return; }
       try {
-        DB.addShare({
+        const result = DB.addShare({
           member_id: isAnon ? null : mid, group_id: gid, title, content, link,
           image_data: imageBase64, week: currentWeek,
         });
-        Utils.toast(isAnon ? '匿名分享成功！' : '分享成功！个人积分 +1', 'success');
+        // 根据加分情况给出提示
+        if (isAnon) {
+          Utils.toast('匿名分享成功！', 'success');
+        } else if (result.pointsAwarded > 0) {
+          const capNow = DB.getWeeklySharePoints(mid, currentWeek);
+          const remain = cap - capNow;
+          Utils.toast('分享成功！个人积分 +1（本周已得 ' + capNow + '/' + cap + '，还可加 ' + remain + ' 分）', 'success');
+        } else {
+          Utils.toast('分享已提交，但本周分享积分已达上限（' + cap + '/' + cap + '），不再加分', 'warning');
+        }
         // 清空表单
         titleInput.value = '';
         contentTextarea.value = '';
