@@ -60,7 +60,7 @@
       let uploadedFileName = '';
       const fileInput = Utils.el('input', {
         type: 'file', id: 'doc-file',
-        accept: '.pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt,.jpg,.jpeg,.png,.gif,.zip,.rar',
+        accept: '.pdf,.doc,.docx,.docm,.dot,.dotx,.dotm,.xls,.xlsx,.xlsm,.xlsb,.xlt,.xltx,.csv,.ppt,.pptx,.pptm,.pot,.potx,.pps,.ppsx,.rtf,.txt,.jpg,.jpeg,.png,.gif,.webp,.svg,.zip,.rar,.7z,.msg',
         style: { display: 'none' },
       });
       const fileBtn = Utils.el('button', {
@@ -197,7 +197,7 @@
         // 链接 / 预览：H-3 白名单协议
         if (d.link) {
           const safeLink = Utils.sanitizeUrl(d.link, { allowImageData: true });
-          const ext = safeLink ? ((safeLink.match(/\.(pdf|doc|docx|xls|xlsx|ppt|pptx|txt|jpg|jpeg|png|gif|webp|zip|rar)(\?|#|$)/i) || [])[1] || '') : '';
+          const ext = safeLink ? ((safeLink.match(/\.(pdf|doc|docx|docm|dot|dotx|dotm|xls|xlsx|xlsm|xlsb|xlt|xltx|csv|ppt|pptx|pptm|pot|potx|pps|ppsx|rtf|txt|jpg|jpeg|png|gif|webp|svg|zip|rar|7z|msg)(\?|#|$)/i) || [])[1] || '') : '';
           if (safeLink && /^https?:\/\//i.test(safeLink)) {
             // PDF 内嵌预览
             if (ext === 'pdf') {
@@ -208,15 +208,32 @@
                   referrerpolicy: 'no-referrer', sandbox: 'allow-same-origin allow-scripts allow-popups',
                 }),
               ]));
-            } else if (/^(doc|docx|xls|xlsx|ppt|pptx)$/i.test(ext)) {
-              card.appendChild(Utils.el('div', { style: { marginTop: '10px', borderRadius: '8px', overflow: 'hidden', border: '1px solid var(--border)' } }, [
-                Utils.el('iframe', {
-                  src: 'https://view.officeapps.live.com/op/embed.aspx?src=' + encodeURIComponent(safeLink),
-                  style: { width: '100%', height: '400px', border: 'none' },
-                  referrerpolicy: 'no-referrer', sandbox: 'allow-same-origin allow-scripts allow-popups allow-forms',
-                }),
-              ]));
-            } else if (/^(jpg|jpeg|png|gif|webp)$/i.test(ext)) {
+            } else if (/^(doc|docx|docm|dot|dotx|dotm|xls|xlsx|xlsm|xlsb|xlt|xltx|csv|ppt|pptx|pptm|pot|potx|pps|ppsx|rtf|msg)$/i.test(ext)) {
+              // Word / Excel / PPT / RTF / Outlook MSG 走微软 Office Online 预览
+              const officeWrap = Utils.el('div', { style: { marginTop: '10px', borderRadius: '8px', overflow: 'hidden', border: '1px solid var(--border)', background: '#f8fafc' } });
+              const openHint = Utils.el('div', { style: { padding: '8px 10px', fontSize: '12px', color: 'var(--text-soft)', background: '#f1f5f9', borderBottom: '1px solid var(--border)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '8px', flexWrap: 'wrap' } });
+              const leftHint = Utils.el('span');
+              leftHint.textContent = '💡 Office 在线预览 · 若预览空白，点击右侧「新窗口打开」或下载后查看';
+              const openNewBtn = Utils.el('a', {
+                href: 'https://view.officeapps.live.com/op/view.aspx?src=' + encodeURIComponent(safeLink),
+                target: '_blank', rel: 'noopener noreferrer',
+                class: 'btn btn-ghost btn-sm',
+                style: { textDecoration: 'none', padding: '2px 8px', fontSize: '12px' },
+              });
+              openNewBtn.textContent = '🔗 新窗口打开';
+              openHint.appendChild(leftHint);
+              openHint.appendChild(openNewBtn);
+              officeWrap.appendChild(openHint);
+              officeWrap.appendChild(Utils.el('iframe', {
+                src: 'https://view.officeapps.live.com/op/embed.aspx?src=' + encodeURIComponent(safeLink),
+                title: (d.title || 'Office 文档') + ' 在线预览',
+                style: { width: '100%', height: '440px', border: 'none' },
+                referrerpolicy: 'no-referrer',
+                sandbox: 'allow-same-origin allow-scripts allow-popups allow-forms allow-popups-to-escape-sandbox allow-top-navigation-by-user-activation',
+                loading: 'lazy',
+              }));
+              card.appendChild(officeWrap);
+            } else if (/^(jpg|jpeg|png|gif|webp|svg)$/i.test(ext)) {
               const im = Utils.el('img', {
                 style: { maxWidth: '100%', borderRadius: '8px', marginTop: '10px', display: 'block' },
                 loading: 'lazy', referrerpolicy: 'no-referrer',
@@ -241,9 +258,9 @@
               printBtn.addEventListener('click', () => window.open(safeLink, '_blank', 'noopener,noreferrer'));
               btnRow.appendChild(printBtn);
             }
-            if (/^(doc|docx|xls|xlsx|ppt|pptx)$/i.test(ext)) {
+            if (/^(doc|docx|docm|dot|dotx|dotm|xls|xlsx|xlsm|xlsb|xlt|xltx|csv|ppt|pptx|pptm|pot|potx|pps|ppsx|rtf|msg)$/i.test(ext)) {
               const tip = Utils.el('span', { style: { fontSize: '12px', color: 'var(--text-soft)', alignSelf: 'center' } });
-              tip.textContent = '（下载后可打印）';
+              tip.textContent = '（下载后可打印，Word/Excel 预览空白可点「新窗口打开」）';
               btnRow.appendChild(tip);
             }
             card.appendChild(btnRow);

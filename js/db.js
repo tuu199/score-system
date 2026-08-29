@@ -628,23 +628,73 @@
     const fileName = file.name.replace(/^((share|doc)_)?/, (_m, p) => (p || 'doc_') + Date.now() + '_')
       .replace(/\.[^.]*$/, '') + '_' + random + '.' + ext;
 
+    // --- 扩展名 -> MIME 映射（解决 Word/Excel 上传失败：老浏览器/老 Office 文件 type 为空或错误） ---
+    const EXT_MIME = {
+      doc: 'application/msword',
+      docx: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+      docm: 'application/vnd.ms-word.document.macroEnabled.12',
+      dot: 'application/msword',
+      dotx: 'application/vnd.openxmlformats-officedocument.wordprocessingml.template',
+      dotm: 'application/vnd.ms-word.template.macroEnabled.12',
+      xls: 'application/vnd.ms-excel',
+      xlsx: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      xlsm: 'application/vnd.ms-excel.sheet.macroEnabled.12',
+      xlsb: 'application/vnd.ms-excel.sheet.binary.macroEnabled.12',
+      xlt: 'application/vnd.ms-excel',
+      xltx: 'application/vnd.openxmlformats-officedocument.spreadsheetml.template',
+      ppt: 'application/vnd.ms-powerpoint',
+      pptx: 'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+      pptm: 'application/vnd.ms-powerpoint.presentation.macroEnabled.12',
+      pot: 'application/vnd.ms-powerpoint',
+      potx: 'application/vnd.openxmlformats-officedocument.presentationml.template',
+      pps: 'application/vnd.ms-powerpoint',
+      ppsx: 'application/vnd.openxmlformats-officedocument.presentationml.slideshow',
+      rtf: 'application/rtf',
+      msg: 'application/vnd.ms-outlook',
+      csv: 'text/csv',
+      pdf: 'application/pdf',
+      txt: 'text/plain',
+      zip: 'application/zip',
+      rar: 'application/x-rar-compressed',
+      '7z': 'application/x-7z-compressed',
+      jpg: 'image/jpeg',
+      jpeg: 'image/jpeg',
+      png: 'image/png',
+      gif: 'image/gif',
+      webp: 'image/webp',
+      svg: 'image/svg+xml',
+    };
+    const overrideMime = EXT_MIME[ext] || null;
+
     let uploadPayload;
+    let contentType = overrideMime; // 优先用扩展名映射，避免浏览器 type 错误导致 Storage 存成 application/octet-stream 打不开
     if (base64DataUrl && typeof base64DataUrl === 'string' && base64DataUrl.startsWith('data:')) {
       // 解码 data:image/xxx;base64,xxxx → Uint8Array 作为 Blob 上传
       const meta = base64DataUrl.match(/^data:(image\/[A-Za-z0-9.+-]+);base64,(.*)$/s);
       if (!meta) throw new Error('图片 base64 格式非法');
       const mime = meta[1];
+      contentType = contentType || mime;
       const bin = atob(meta[2]);
       const u8 = new Uint8Array(bin.length);
       for (let i = 0; i < bin.length; i++) u8[i] = bin.charCodeAt(i);
-      uploadPayload = new Blob([u8.buffer], { type: mime });
+      uploadPayload = new Blob([u8.buffer], { type: contentType });
     } else if (typeof Blob !== 'undefined' && file instanceof Blob) {
-      uploadPayload = file;
+      if (!contentType) contentType = (file && file.type) || EXT_MIME[ext] || 'application/octet-stream';
+      if (file.type && contentType !== file.type && (!EXT_MIME[ext] || !file.type)) {
+        // 浏览器带了类型，扩展名映射不到，就尊重浏览器
+        contentType = file.type;
+      }
+      // 重新包装 Blob，保证 content-type 正确（否则 Storage 存为 application/octet-stream）
+      uploadPayload = new Blob([file], { type: contentType });
+      Object.defineProperty(uploadPayload, 'name', { value: file.name, writable: false });
     } else {
       throw new Error('uploadFile 需要 Blob/File 或第二个参数传入 dataURL');
     }
     if (!supabase || !supabase.storage) throw new Error('当前环境没有可用的 Storage API');
-    const { error } = await supabase.storage.from(bucket).upload(fileName, uploadPayload, { upsert: false });
+    const { error } = await supabase.storage.from(bucket).upload(fileName, uploadPayload, {
+      upsert: false,
+      contentType: contentType, // 显式指定，避免 Supabase 推断失败
+    });
     if (error) throw new Error('上传失败（' + bucket + '）：' + error.message);
     const { data: urlData } = supabase.storage.from(bucket).getPublicUrl(fileName);
     return (urlData && urlData.publicUrl) ? urlData.publicUrl : null;
