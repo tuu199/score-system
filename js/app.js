@@ -378,7 +378,12 @@
     } catch (e) {
       console.error(e);
       loading.innerHTML = `<p style="color:var(--danger)">初始化失败：${Utils.escapeHtml(e.message)}</p>
-        <p style="margin-top:10px;color:var(--text-soft);font-size:13px">请检查网络连接（需从 CDN 加载 Supabase SDK），刷新重试。</p>`;
+        <p style="margin-top:10px;color:var(--text-soft);font-size:13px">请检查网络连接后点下方按钮重试</p>
+        <button id="retry-init" class="btn btn-primary" style="margin-top:14px">重新加载</button>`;
+      document.getElementById('retry-init')?.addEventListener('click', () => {
+        loading.innerHTML = '<div class="spinner"></div><p>正在初始化数据库…</p>';
+        init();
+      });
     }
   }
 

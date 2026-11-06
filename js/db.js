@@ -275,17 +275,31 @@
   }
 
   /** ========== 初始化 ========== */
+  let _loaded = false;
+
+  /** 给请求加超时兜底：手机弱网时 supabase 请求可能长时间挂起，不能让页面一直转圈 */
+  function _withTimeout(promise, ms, msg) {
+    return new Promise((resolve, reject) => {
+      const timer = setTimeout(() => reject(new Error(msg)), ms);
+      promise.then(
+        v => { clearTimeout(timer); resolve(v); },
+        e => { clearTimeout(timer); reject(e); }
+      );
+    });
+  }
+
   async function init() {
-    if (supabase) return true;
     if (typeof global.supabase === 'undefined' || !global.supabase.createClient) {
       throw new Error('Supabase SDK 未加载，请检查网络连接');
     }
-    supabase = global.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
-    await _loadAllFromSupabase();
+    if (!supabase) supabase = global.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+    if (_loaded) return true;
+    await _withTimeout(_loadAllFromSupabase(), 15000, '连接云端超时（15秒），请检查网络后重试');
     // 首次使用：创建默认小组
     if (_cache.groups.length === 0) {
       await seedIfEmpty();
     }
+    _loaded = true;
     return true;
   }
 
